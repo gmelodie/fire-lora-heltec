@@ -54,7 +54,6 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT);
 void loraReset()
 {
     pinMode(RFM95_RST, OUTPUT);
-
     digitalWrite(RFM95_RST, LOW);
     delay(20);
     digitalWrite(RFM95_RST, HIGH);
@@ -71,6 +70,7 @@ void drawCentered(const char *text, int y)
 /* -----------------------
    WiFi Helpers
    ----------------------- */
+
 bool connectWiFi()
 {
     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -116,8 +116,9 @@ void maintainWiFi()
 }
 
 /* -----------------------
-   HTTPS Post
+   HTTPS Post (environment sensors)
    ----------------------- */
+
 void postToApi(uint8_t sensorID, String temp, String hum, String pres, uint32_t counter, int16_t rssi)
 {
     if (!wifiConnected)
@@ -156,6 +157,47 @@ void postToApi(uint8_t sensorID, String temp, String hum, String pres, uint32_t 
 }
 
 /* -----------------------
+   HTTPS Post (battery)
+   ----------------------- */
+
+void postBattery(uint8_t sensorID, String voltage, uint32_t counter, int16_t rssi)
+{
+    if (!wifiConnected)
+        return;
+
+    WiFiClientSecure client;
+    client.setCACert(API_CERT);
+
+    HTTPClient https;
+
+    String url = String(API_URL) + "/battery";
+
+    if (!https.begin(client, url))
+    {
+        Serial.println("Battery HTTPS begin failed");
+        return;
+    }
+
+    https.addHeader("Content-Type", "application/json");
+    https.addHeader("X-API-Password", API_PASSWORD);
+
+    String json =
+    "{"
+    "\"sensor_id\":" + String(sensorID) + ","
+    "\"voltage\":" + voltage + ","
+    "\"counter\":" + String(counter) + ","
+    "\"rssi\":" + String(rssi) +
+    "}";
+
+    int code = https.POST(json);
+
+    Serial.print("Battery HTTPS Response: ");
+    Serial.println(code);
+
+    https.end();
+}
+
+/* -----------------------
    Setup
    ----------------------- */
 
@@ -164,7 +206,6 @@ void setup()
     Serial.begin(115200);
     delay(500);
 
-    /* Display */
     display.begin();
     display.setFont(u8g2_font_ncenB08_tr);
 
@@ -172,7 +213,6 @@ void setup()
     drawCentered("Booting...", 20);
     display.sendBuffer();
 
-    /* WiFi attempt */
     if(connectWiFi()) {
       configTime(0, 0, "pool.ntp.org");
       while (time(nullptr) < 100000)
@@ -181,7 +221,6 @@ void setup()
       }
     }
 
-    /* LoRa */
     loraReset();
 
     if (!rf95.init())
@@ -248,7 +287,44 @@ void loop()
         return;
     }
 
-    /* ---- Parse Sensor Packet ---- */
+    /* ---- Handle Battery Packet ---- */
+
+    if (message.startsWith("BAT|"))
+    {
+        int p1 = message.indexOf('|');
+        int p2 = message.indexOf('|', p1 + 1);
+        int p3 = message.indexOf('|', p2 + 1);
+
+        if (p1 == -1 || p2 == -1 || p3 == -1)
+            return;
+
+        uint8_t sensorID = message.substring(p1 + 1, p2).toInt();
+        String voltage = message.substring(p2 + 1, p3);
+        uint32_t counter = message.substring(p3 + 1).toInt();
+
+        String ack = "ACK|" + String(sensorID) + "|" + String(counter);
+        rf95.send((uint8_t*)ack.c_str(), ack.length());
+        rf95.waitPacketSent();
+
+        postBattery(sensorID, voltage, counter, rssi);
+
+        display.clearBuffer();
+        display.setCursor(0, 20);
+        display.print("Battery Node");
+        display.setCursor(0, 36);
+        display.print("ID:");
+        display.print(sensorID);
+        display.setCursor(0, 52);
+        display.print("V:");
+        display.print(voltage);
+        display.print(" RSSI:");
+        display.print(rssi);
+        display.sendBuffer();
+
+        return;
+    }
+
+    /* ---- Parse Environment Sensor Packet ---- */
 
     int p1 = message.indexOf('|');
     int p2 = message.indexOf('|', p1 + 1);
@@ -264,18 +340,11 @@ void loop()
     String pres = message.substring(p3 + 1, p4);
     uint32_t counter = message.substring(p4 + 1).toInt();
 
-    /* ---- Send ACK ---- */
-
     String ack = "ACK|" + String(sensorID) + "|" + String(counter);
-
     rf95.send((uint8_t*)ack.c_str(), ack.length());
     rf95.waitPacketSent();
 
-    /* ---- HTTP POST (only if WiFi works) ---- */
-
     postToApi(sensorID, temp, hum, pres, counter, rssi);
-
-    /* ---- Display ---- */
 
     display.clearBuffer();
 
@@ -301,4 +370,3 @@ void loop()
 
     display.sendBuffer();
 }
-

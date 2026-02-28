@@ -49,6 +49,17 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS battery_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sensor_id TEXT,
+            voltage REAL,
+            counter INTEGER,
+            rssi INTEGER,
+            timestamp INTEGER
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -85,8 +96,33 @@ def insert_reading(data):
     conn.close()
 
 
+def insert_battery(data):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO battery_readings (
+            sensor_id,
+            voltage,
+            counter,
+            rssi,
+            timestamp
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        data["sensor_id"],
+        float(data["voltage"]),
+        int(data["counter"]),
+        int(data["rssi"]),
+        int(time.time())
+    ))
+
+    conn.commit()
+    conn.close()
+
+
 # -------------------------
-# Endpoint
+# Sensor Endpoint
 # -------------------------
 @app.post("/sensor")
 async def receive_sensor(req: Request):
@@ -115,7 +151,39 @@ async def receive_sensor(req: Request):
 
     insert_reading(payload)
 
-    print("Received:", payload)
+    print("Sensor:", payload)
 
     return {"status": "ok"}
 
+
+# -------------------------
+# Battery Endpoint
+# -------------------------
+@app.post("/battery")
+async def receive_battery(req: Request):
+    password = req.headers.get("X-API-Password")
+
+    if password != API_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        payload = await req.json()
+    except:
+        raise HTTPException(400, "Invalid JSON")
+
+    required = [
+        "sensor_id",
+        "voltage",
+        "counter",
+        "rssi"
+    ]
+
+    for f in required:
+        if f not in payload:
+            raise HTTPException(400, f"Missing {f}")
+
+    insert_battery(payload)
+
+    print("Battery:", payload)
+
+    return {"status": "ok"}
