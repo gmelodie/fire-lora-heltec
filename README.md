@@ -1,6 +1,7 @@
-# Fire LoRa Heltec V2
+# Fire LoRa Heltec V3
 
-Using LoRa Heltec V2 boards to detect wildfires in the brazilian Cerrado
+Using LoRa Heltec V3 boards to detect wildfires in the brazilian Cerrado
+Obs: all code works in V3 boards only
 
 ## Setup
 1. [Install](https://docs.arduino.cc/arduino-cli/installation/) the Arduino CLI
@@ -15,7 +16,7 @@ arduino-cli core install esp32:esp32
 # install libs
 arduino-cli lib install "Adafruit BME280 Library"
 arduino-cli lib install "Adafruit Unified Sensor"
-arduino-cli lib install "RadioHead"
+arduino-cli lib install "RadioLib"
 ```
 3. Change `./gateway/secrets.example.h` to `./gateway/secrets.h` and fill it with actual values.
 

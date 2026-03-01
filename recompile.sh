@@ -7,15 +7,7 @@ fi
 
 PROJECT=$1
 PORT=$2
-
-if [ "$PORT" = "/dev/ttyUSB0" ]; then
-    BOARD="esp32:esp32:heltec_wifi_lora_32_V2"
-elif [ "$PORT" = "/dev/ttyUSB1" ]; then
-    BOARD="esp32:esp32:heltec_wifi_lora_32_V3"
-else
-    echo "Unknown port: $PORT"
-    exit 1
-fi
+BOARD="esp32:esp32:heltec_wifi_lora_32_V3"
 
 echo "Using board: $BOARD"
 echo "Port: $PORT"

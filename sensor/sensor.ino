@@ -1,51 +1,36 @@
 #include <SPI.h>
+#include <RadioLib.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
-#include <RH_RF95.h>
-#include <U8g2lib.h>
+#include "HT_SSD1306Wire.h"
 #include <EEPROM.h>
+#include "../settings.h"
 
-/* ================= LoRa ================= */
-#define RFM95_CS   18
-#define RFM95_RST  14
-#define RFM95_INT  26
-#define RF95_FREQ  915.0
+/* =========================================================
+   Display (Heltec native driver)
+   ========================================================= */
 
-RH_RF95 rf95(RFM95_CS, RFM95_INT);
-
-/* ================= Display ================= */
-#define D_SCL 15
-#define D_SDA 4
-#define D_RST 16
-
-U8G2_SSD1306_128X64_NONAME_F_SW_I2C display(
-    U8G2_R0,
-    D_SCL,
-    D_SDA,
-    D_RST
+static SSD1306Wire display(
+  0x3c,
+  500000,
+  SDA_OLED,
+  SCL_OLED,
+  GEOMETRY_128_64,
+  RST_OLED
 );
 
-/* ================= Sensor ================= */
+SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY);
 Adafruit_BME280 bme;
 
-/* ================= Button ================= */
-#define BUTTON_PIN 0
+/* =========================================================
+   Globals
+   ========================================================= */
 
-/* ================= EEPROM ================= */
-#define EEPROM_SIZE 32
-#define SENSOR_ID_ADDR 0
-
-/* ================= Timing ================= */
-#define TX_INTERVAL 300000UL
-#define ACK_TIMEOUT 2000
-#define MAX_RETRIES 3
-#define SCREEN_TIMEOUT 5000
-
-#define MAX_SENSORS 25
-
-/* ================= Globals ================= */
 uint8_t sensorID = 1;
 uint32_t msgCounter = 0;
+
+bool gatewayFound = false;
+bool waitingAck = false;
 
 unsigned long lastTx = 0;
 bool firstTx = true;
@@ -53,247 +38,295 @@ bool firstTx = true;
 bool screenOn = false;
 unsigned long screenTimer = 0;
 
-/* ====================================================== */
-/* EEPROM */
-/* ====================================================== */
+volatile bool receivedFlag = false;
+int retryCount = 0;
 
-void loadSensorID()
-{
-    sensorID = EEPROM.read(SENSOR_ID_ADDR);
+bool bmeFound = false;
+bool batteryAvailable = true;   // battery ADC always readable, but we keep flag
 
-    if (sensorID == 0xFF || sensorID == 0)
-        sensorID = 1;
+/* =========================================================
+   OLED Power
+   ========================================================= */
+
+void VextON() {
+  pinMode(Vext, OUTPUT);
+  digitalWrite(Vext, LOW);
 }
 
-void saveSensorID()
-{
-    EEPROM.write(SENSOR_ID_ADDR, sensorID);
-    EEPROM.commit();
+/* =========================================================
+   Display helper
+   ========================================================= */
+
+void showMessage(String l1, String l2 = "") {
+  display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 16, l1);
+  display.drawString(0, 36, l2);
+  display.display();
+
+  screenOn = true;
+  screenTimer = millis();
 }
 
-/* ====================================================== */
-/* Display */
-/* ====================================================== */
+/* =========================================================
+   Battery
+   ========================================================= */
 
-void showMessage(String l1, String l2)
-{
-    display.clearBuffer();
-    display.setFont(u8g2_font_ncenB08_tr);
-
-    display.setCursor(0, 20);
-    display.print(l1);
-
-    display.setCursor(0, 40);
-    display.print(l2);
-
-    display.sendBuffer();
-
-    screenOn = true;
-    screenTimer = millis();
+float readBatteryVoltage() {
+  int raw = analogRead(BATTERY_PIN);
+  float voltage = (raw / ADC_RES) * ADC_REF;
+  return voltage * VOLTAGE_DIVIDER_RATIO;
 }
 
-/* ====================================================== */
-/* Ping receiver */
-/* ====================================================== */
+/* =========================================================
+   EEPROM
+   ========================================================= */
 
-bool pingReceiver(int16_t &rssiOut)
-{
-    String ping = "PING|" + String(sensorID);
+void loadSensorID() {
+  EEPROM.begin(EEPROM_SIZE);
+  sensorID = EEPROM.read(SENSOR_ID_ADDR);
 
-    rf95.send((uint8_t*)ping.c_str(), ping.length());
-    rf95.waitPacketSent();
+  if (sensorID == 0xFF || sensorID == 0)
+    sensorID = 1;
+}
 
-    unsigned long start = millis();
+void saveSensorID() {
+  EEPROM.write(SENSOR_ID_ADDR, sensorID);
+  EEPROM.commit();
+}
 
-    while (millis() - start < 1500)
-    {
-        if (rf95.available())
-        {
-            uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-            uint8_t len = sizeof(buf);
+/* =========================================================
+   Radio
+   ========================================================= */
 
-            if (rf95.recv(buf, &len))
-            {
-                buf[len] = '\0';
-                String resp = String((char*)buf);
+void setFlag(void) {
+  receivedFlag = true;
+}
 
-                if (resp == ("PONG|" + String(sensorID)))
-                {
-                    rssiOut = rf95.lastRssi();
-                    return true;
-                }
-            }
-        }
+bool initRadio() {
+  Serial.println("Initializing radio");
+
+  int state = radio.begin(RX_FREQ_MHZ);
+
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.print("Radio failed: ");
+    Serial.println(state);
+    while (true);
+  }
+
+  radio.setSpreadingFactor(RX_SF);
+  radio.setBandwidth(RX_BW_KHZ);
+  radio.setCodingRate(RX_CR);
+  radio.setOutputPower(TX_POWER_DBM);
+
+  radio.setDio1Action(setFlag);
+
+  Serial.println("Radio ready");
+  return true;
+}
+
+/* =========================================================
+   TX
+   ========================================================= */
+
+void transmit(String msg) {
+  Serial.println("TX: " + msg);
+  showMessage("Sending", msg);
+
+  int state = radio.transmit(msg);
+
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.print("TX error: ");
+    Serial.println(state);
+  }
+
+  radio.startReceive();
+}
+
+void sendPing() {
+  String msg = "PING|" + String(sensorID);
+  transmit(msg);
+}
+
+void sendSensorData() {
+  String temperature = "nil";
+  String humidity = "nil";
+  String pressure = "nil";
+  String battery = "nil";
+
+  if (bmeFound) {
+    temperature = String(bme.readTemperature(), 2);
+    humidity = String(bme.readHumidity(), 2);
+    pressure = String(bme.readPressure() / 100.0F, 2);
+  }
+
+  if (batteryAvailable) {
+    battery = String(readBatteryVoltage(), 2);
+  }
+
+  String msg =
+    "DATA|" +
+    String(sensorID) + "|" +
+    temperature + "|" +
+    humidity + "|" +
+    pressure + "|" +
+    battery + "|" +
+    String(msgCounter);
+
+  waitingAck = true;
+  retryCount = 0;
+
+  transmit(msg);
+}
+
+/* =========================================================
+   RX
+   ========================================================= */
+
+void processPacket(String msg) {
+  Serial.println("RX: " + msg);
+
+  if (msg.startsWith("PONG")) {
+    gatewayFound = true;
+    showMessage("Gateway", "Connected");
+    return;
+  }
+
+  if (msg.startsWith("ACK")) {
+    waitingAck = false;
+    retryCount = 0;
+    msgCounter++;
+    showMessage("ACK", "OK");
+    return;
+  }
+  Serial.println();
+}
+
+void handleReceive() {
+  if (!receivedFlag) return;
+
+  receivedFlag = false;
+
+  String msg;
+  int state = radio.readData(msg);
+
+  if (state == RADIOLIB_ERR_NONE && msg.length() > 0) {
+    processPacket(msg);
+  }
+
+  radio.startReceive();
+}
+
+/* =========================================================
+   Button
+   ========================================================= */
+
+void handleButton() {
+  static bool lastState = HIGH;
+
+  bool current = digitalRead(BUTTON_PIN);
+
+  if (lastState == HIGH && current == LOW) {
+    sensorID++;
+
+    if (sensorID > MAX_SENSORS)
+      sensorID = 1;
+
+    saveSensorID();
+
+    showMessage("New Sensor ID", String(sensorID));
+    delay(300);
+  }
+
+  lastState = current;
+}
+
+/* =========================================================
+   Setup
+   ========================================================= */
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  VextON();
+  delay(100);
+
+  display.init();
+  display.setFont(ArialMT_Plain_10);
+
+  showMessage("Sensor Boot", "V3");
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  pinMode(BATTERY_PIN, INPUT);
+  analogReadResolution(12);
+  analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+
+  loadSensorID();
+
+  bmeFound = bme.begin(0x76);
+
+  if (bmeFound) {
+    Serial.println("BME280 OK");
+    showMessage("BME280", "Detected");
+  } else {
+    Serial.println("BME280 not found");
+    showMessage("BME280", "Missing");
+  }
+
+  display.clear();
+  display.drawString(0, 0, "Sensor Boot V3");
+  display.drawString(0, 16, bmeFound ? "BME: OK" : "BME: MISSING");
+  display.display();
+  delay(1500);
+
+  initRadio();
+  radio.startReceive();
+
+  lastTx = millis();
+}
+
+/* =========================================================
+   Loop
+   ========================================================= */
+
+void loop() {
+  handleReceive();
+  handleButton();
+
+  if (screenOn && millis() - screenTimer > SCREEN_TIMEOUT) {
+    display.clear();
+    display.display();
+    screenOn = false;
+  }
+
+  if (!gatewayFound) {
+    if (millis() - lastTx > 2000) {
+      sendPing();
+      lastTx = millis();
     }
+    return;
+  }
 
-    return false;
+  if (!waitingAck &&
+      (millis() - lastTx >= TX_INTERVAL || firstTx)) {
+
+    firstTx = false;
+    lastTx = millis();
+    sendSensorData();
+  }
+
+  if (waitingAck && millis() - lastTx > ACK_TIMEOUT) {
+    if (retryCount < MAX_RETRIES) {
+      retryCount++;
+      Serial.println("Retrying TX...");
+      sendSensorData();
+      lastTx = millis();
+    } else {
+      Serial.println("ACK failed");
+      waitingAck = false;
+    }
+  }
 }
-
-/* ====================================================== */
-/* Button */
-/* ====================================================== */
-
-void handleButton()
-{
-    static bool lastState = HIGH;
-
-    bool current = digitalRead(BUTTON_PIN);
-
-    if (lastState == HIGH && current == LOW)
-    {
-        sensorID++;
-        if (sensorID > MAX_SENSORS)
-            sensorID = 1;
-
-        saveSensorID();
-
-        Serial.print("New sensor ID: ");
-        Serial.println(sensorID);
-
-        showMessage("Testing ID:", String(sensorID));
-
-        int16_t rssi = 0;
-        bool ok = pingReceiver(rssi);
-
-        if (ok)
-            showMessage("Connection", "SUCCESS (RSSI: " + String(rssi) + ")");
-        else
-            showMessage("Connection", "FAILED");
-
-
-        delay(200);
-    }
-
-    lastState = current;
-}
-
-/* ====================================================== */
-/* ACK Send */
-/* ====================================================== */
-
-bool sendWithAck(String payload)
-{
-    for (int attempt = 1; attempt <= MAX_RETRIES; attempt++)
-    {
-        rf95.send((uint8_t*)payload.c_str(), payload.length());
-        rf95.waitPacketSent();
-
-        unsigned long start = millis();
-
-        while (millis() - start < ACK_TIMEOUT)
-        {
-            if (rf95.available())
-            {
-                uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-                uint8_t len = sizeof(buf);
-
-                if (rf95.recv(buf, &len))
-                {
-                    buf[len] = '\0';
-                    String resp = String((char*)buf);
-
-                    String expected =
-                        "ACK|" + String(sensorID) + "|" + String(msgCounter);
-
-                    if (resp == expected)
-                        return true;
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
-/* ====================================================== */
-/* Setup */
-/* ====================================================== */
-
-void setup()
-{
-    Serial.begin(115200);
-    delay(500);
-
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
-
-    EEPROM.begin(EEPROM_SIZE);
-    loadSensorID();
-
-    /* Display */
-    display.begin();
-    display.clearBuffer();
-    display.sendBuffer();
-
-    /* Sensor */
-    if (!bme.begin(0x76))
-    {
-        Serial.println("BME280 not found!");
-        while (1);
-    }
-
-    /* LoRa reset */
-    pinMode(RFM95_RST, OUTPUT);
-    digitalWrite(RFM95_RST, HIGH);
-    delay(10);
-    digitalWrite(RFM95_RST, LOW);
-    delay(10);
-    digitalWrite(RFM95_RST, HIGH);
-
-    if (!rf95.init())
-    {
-        Serial.println("LoRa init failed!");
-        while (1);
-    }
-
-    rf95.setFrequency(RF95_FREQ);
-    rf95.setTxPower(23, false);
-
-    Serial.print("Sensor ID: ");
-    Serial.println(sensorID);
-}
-
-/* ====================================================== */
-/* Loop */
-/* ====================================================== */
-
-void loop()
-{
-    handleButton();
-
-    /* Screen auto off */
-    if (screenOn && millis() - screenTimer > SCREEN_TIMEOUT)
-    {
-        display.clearBuffer();
-        display.sendBuffer();
-        screenOn = false;
-    }
-
-    /* Transmission */
-    if (millis() - lastTx >= TX_INTERVAL || firstTx)
-    {
-        if (firstTx)
-            firstTx = false;
-
-        lastTx = millis();
-        msgCounter++;
-
-        float temperature = bme.readTemperature();
-        float humidity = bme.readHumidity();
-        float pressure = bme.readPressure() / 100.0F;
-
-        String payload =
-            String(sensorID) + "|" +
-            String(temperature, 2) + "|" +
-            String(humidity, 2) + "|" +
-            String(pressure, 2) + "|" +
-            String(msgCounter);
-
-        Serial.println("Payload: " + payload);
-
-        bool ok = sendWithAck(payload);
-
-        if (!ok)
-            Serial.println("Transmission failed after retries");
-    }
-}
-
