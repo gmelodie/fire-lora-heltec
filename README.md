@@ -3,6 +3,19 @@
 Using LoRa Heltec V3 boards to detect wildfires in the brazilian Cerrado
 Obs: all code works in V3 boards only
 
+## TODO
+sensor
+- press button to change sensor ID
+- show new sensor id on screen
+- turn off sensor screen 5s after last button press
+- deep sleep mode between transmissions
+
+gateway
+- connect to eduroam
+    - maybe cable + raspberry pi?
+    - maybe a version that doesnt require internet connection?
+    - maybe raspberry pi at the same local network as the gateway?
+
 ## Setup
 1. [Install](https://docs.arduino.cc/arduino-cli/installation/) the Arduino CLI
 2. Setup Arduino CLI:
