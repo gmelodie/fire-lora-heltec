@@ -149,7 +149,7 @@ void transmit(String msg) {
     Serial.print("TX error: ");
     Serial.println(state);
   }
-
+  delay(100);
   radio.startReceive();
 }
 
