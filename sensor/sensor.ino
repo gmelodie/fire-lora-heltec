@@ -274,8 +274,9 @@ void setup() {
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
 
   loadSensorID();
-
-  bmeFound = bme.begin(0x76);
+  delay(2000);
+  Wire1.begin(BME_SDA, BME_SCL);
+  bmeFound = bme.begin(0x76,&Wire1);
 
   if (bmeFound) {
     Serial.println("BME280 OK");
