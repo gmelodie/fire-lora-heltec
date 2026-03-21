@@ -13,15 +13,15 @@
    ========================================================= */
 
 static SSD1306Wire display(
-  0x3c,
-  500000,
-  SDA_OLED,
-  SCL_OLED,
-  GEOMETRY_128_64,
-  RST_OLED
-);
+    0x3c,
+    500000,
+    SDA_OLED,
+    SCL_OLED,
+    GEOMETRY_128_64,
+    RST_OLED);
 
-void VextON() {
+void VextON()
+{
   pinMode(Vext, OUTPUT);
   digitalWrite(Vext, LOW);
 }
@@ -30,24 +30,28 @@ SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY);
 
 bool wifiConnected = false;
 unsigned long lastWifiRetry = 0;
+volatile bool receivedFlag = false;
 
 /* =========================================================
    Display helpers
    ========================================================= */
 
-void drawCentered(String text, int y) {
+void drawCentered(String text, int y)
+{
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.drawString(64, y, text);
 }
 
-void showBootScreen() {
+void showBootScreen()
+{
   display.clear();
   drawCentered("Gateway Boot", 20);
   drawCentered("Starting...", 36);
   display.display();
 }
 
-void showReady() {
+void showReady()
+{
   display.clear();
   drawCentered("LoRa RX Ready", 28);
   display.display();
@@ -57,11 +61,13 @@ void showReady() {
    WiFi
    ========================================================= */
 
-bool connectWiFi() {
+bool connectWiFi()
+{
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 20) {
+  while (WiFi.status() != WL_CONNECTED && retries < 20)
+  {
     delay(500);
     Serial.print(".");
     retries++;
@@ -72,18 +78,21 @@ bool connectWiFi() {
   return wifiConnected;
 }
 
-void maintainWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
+void maintainWiFi()
+{
+  if (WiFi.status() == WL_CONNECTED)
+  {
     wifiConnected = true;
     return;
   }
 
   wifiConnected = false;
 
-  if (millis() - lastWifiRetry > WIFI_RETRY_INTERVAL) {
+  if (millis() - lastWifiRetry > WIFI_RETRY_INTERVAL)
+  {
     lastWifiRetry = millis();
     Serial.print("Maintaining WiFi");
-    bool wifiConnected = connectWiFi();
+    wifiConnected = connectWiFi();
     Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
   }
 }
@@ -92,15 +101,18 @@ void maintainWiFi() {
    HTTPS helpers
    ========================================================= */
 
-bool httpsPost(String url, String payload) {
-  if (!wifiConnected) return false;
+bool httpsPost(String url, String payload)
+{
+  if (!wifiConnected)
+    return false;
 
   WiFiClientSecure client;
-  client.setCACert(API_CERT);
+  client.setCACert(API_CERT); //If you dont have a valid cert, you might want to use "client.setInsecure();"
 
   HTTPClient https;
 
-  if (!https.begin(client, url)) {
+  if (!https.begin(client, url))
+  {
     Serial.println("HTTPS begin failed");
     return false;
   }
@@ -121,7 +133,13 @@ bool httpsPost(String url, String payload) {
    LoRa helpers
    ========================================================= */
 
-void sendAck(uint8_t id, uint32_t counter) {
+void IRAM_ATTR setFlag(void)
+{
+  receivedFlag = true;
+}
+
+void sendAck(uint8_t id, uint32_t counter)
+{
   String ack = "ACK|" + String(id) + "|" + String(counter);
 
   radio.standby();
@@ -130,7 +148,8 @@ void sendAck(uint8_t id, uint32_t counter) {
   radio.startReceive();
 }
 
-void sendPong(uint8_t id) {
+void sendPong(uint8_t id)
+{
   String pong = "PONG|" + String(id);
 
   radio.standby();
@@ -139,10 +158,12 @@ void sendPong(uint8_t id) {
   radio.startReceive();
 }
 
-bool initRadio() {
+bool initRadio()
+{
   int state = radio.begin(RX_FREQ_MHZ);
 
-  if (state != RADIOLIB_ERR_NONE) {
+  if (state != RADIOLIB_ERR_NONE)
+  {
     Serial.printf("LoRa init failed: code %d\n", state);
     return false;
   }
@@ -152,7 +173,7 @@ bool initRadio() {
   radio.setCodingRate(RX_CR);
   radio.setOutputPower(TX_POWER_DBM);
   radio.setDio2AsRfSwitch();
-
+  radio.setDio1Action(setFlag);
   radio.startReceive();
 
   return true;
@@ -162,7 +183,8 @@ bool initRadio() {
    Packet handlers
    ========================================================= */
 
-void showPacket(String title, String line2, String line3) {
+void showPacket(String title, String line2, String line3)
+{
   display.clear();
   drawCentered(title, 12);
   drawCentered(line2, 32);
@@ -170,40 +192,27 @@ void showPacket(String title, String line2, String line3) {
   display.display();
 }
 
-void handlePing(String msg) {
+void handlePing(String msg)
+{
   uint8_t id = msg.substring(5).toInt();
   sendPong(id);
   showPacket("PING", "Sensor " + String(id), "Responded");
 }
 
-void handleBattery(String msg, int16_t rssi) {
-  int p1 = msg.indexOf('|');
-  int p2 = msg.indexOf('|', p1 + 1);
-  int p3 = msg.indexOf('|', p2 + 1);
-  if (p1 == -1 || p2 == -1 || p3 == -1) return;
-
-  uint8_t id = msg.substring(p1 + 1, p2).toInt();
-  String voltage = msg.substring(p2 + 1, p3);
-  uint32_t counter = msg.substring(p3 + 1).toInt();
-
-  sendAck(id, counter);
-
-  showPacket("Battery", "ID " + String(id),
-             "V " + voltage + " RSSI " + String(rssi));
-}
-
-void handleEnvironment(String msg, int16_t rssi) {
+String handleEnvironment(String msg, int16_t rssi)
+{
   int p1 = msg.indexOf('|');
   int p2 = msg.indexOf('|', p1 + 1);
   int p3 = msg.indexOf('|', p2 + 1);
   int p4 = msg.indexOf('|', p3 + 1);
   int p5 = msg.indexOf('|', p4 + 1);
   int p6 = msg.indexOf('|', p5 + 1);
-  if (p1==-1||p2==-1||p3==-1||p4==-1||p5==-1||p6==-1) return;
+  if (p1 == -1 || p2 == -1 || p3 == -1 || p4 == -1 || p5 == -1 || p6 == -1)
+    return "";
 
   uint8_t id = msg.substring(p1 + 1, p2).toInt();
   String temp = msg.substring(p2 + 1, p3);
-  String hum  = msg.substring(p3 + 1, p4);
+  String hum = msg.substring(p3 + 1, p4);
   String pres = msg.substring(p4 + 1, p5);
   String batt = msg.substring(p5 + 1, p6);
   uint32_t counter = msg.substring(p6 + 1).toInt();
@@ -211,17 +220,30 @@ void handleEnvironment(String msg, int16_t rssi) {
   sendAck(id, counter);
 
   showPacket(
-    "Sensor " + String(id),
-    "T " + temp + " H " + hum,
-    "B " + batt + " RSSI " + String(rssi)
-  );
+      "Sensor " + String(id),
+      "T " + temp + " H " + hum,
+      "B " + batt + " RSSI " + String(rssi));
+  return "{\"sensor_id\":\"" + String(id) + "\","
+                                            "\"temperature\":" +
+         temp + ","
+                "\"humidity\":" +
+         hum + ","
+               "\"pressure\":" +
+         pres + ","
+                "\"battery\":" +
+         batt + ","
+                "\"counter\":" +
+         String(counter) + ","
+                           "\"rssi\":" +
+         String(rssi) + "}";
 }
 
 /* =========================================================
    Setup
    ========================================================= */
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
   delay(500);
 
@@ -233,12 +255,14 @@ void setup() {
 
   showBootScreen();
 
-  bool wifiConnected = connectWiFi();
+  wifiConnected = connectWiFi();
   Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
 
-  if (!initRadio()) {
+  if (!initRadio())
+  {
     showPacket("ERROR", "LoRa Failed", "");
-    while (true);
+    while (true)
+      ;
   }
   Serial.println("Radio OK");
   Serial.println();
@@ -250,14 +274,20 @@ void setup() {
    Loop
    ========================================================= */
 
-void loop() {
+void loop()
+{
   maintainWiFi();
 
-  String msg;
-  int state = radio.receive(msg);
+  if (!receivedFlag)
+    return;
+  receivedFlag = false;
 
-  if (state != RADIOLIB_ERR_NONE) {
-    delay(20);
+  String msg;
+  int state = radio.readData(msg);
+
+  if (state != RADIOLIB_ERR_NONE || msg.length() == 0)
+  {
+    radio.startReceive();
     return;
   }
 
@@ -268,16 +298,19 @@ void loop() {
   Serial.print(rssi);
   Serial.println(" dBm");
 
-  if (msg.startsWith("PING|")) {
+  if (msg.startsWith("PING|"))
+  {
     handlePing(msg);
+    radio.startReceive();
     return;
   }
+  radio.startReceive();
 
-  if (msg.startsWith("BAT|")) {
-    handleBattery(msg, rssi);
-    return;
+  if (msg.startsWith("DATA|")) {
+    String payload = handleEnvironment(msg, rssi);
+    if (payload.length() > 0) {
+        httpsPost(API_URL "/sensor", payload);
+    }
   }
-
-  handleEnvironment(msg, rssi);
   Serial.println();
 }

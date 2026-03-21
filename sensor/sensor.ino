@@ -73,10 +73,19 @@ void showMessage(String l1, String l2 = "") {
    Battery
    ========================================================= */
 
-float readBatteryVoltage() {
-  int raw = analogRead(BATTERY_PIN);
-  float voltage = (raw / ADC_RES) * ADC_REF;
-  return voltage * VOLTAGE_DIVIDER_RATIO;
+int readBattery() {
+  int sum = 0;
+  for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
+    sum += analogRead(BATTERY_PIN);
+  }
+  int raw = sum / NUM_ADC_SAMPLES;
+
+  if (raw >= BAT_100) return 100;
+  if (raw >= BAT_80) return 80;
+  if (raw >= BAT_50) return 50;
+  if (raw >= BAT_25) return 25;
+  if (raw >= BAT_10) return 10;
+  return 0;
 }
 
 /* =========================================================
@@ -140,7 +149,7 @@ void transmit(String msg) {
     Serial.print("TX error: ");
     Serial.println(state);
   }
-
+  delay(100);
   radio.startReceive();
 }
 
@@ -162,7 +171,7 @@ void sendSensorData() {
   }
 
   if (batteryAvailable) {
-    battery = String(readBatteryVoltage(), 2);
+    battery = String(readBattery());
   }
 
   String msg =
@@ -265,8 +274,9 @@ void setup() {
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
 
   loadSensorID();
-
-  bmeFound = bme.begin(0x76);
+  delay(2000);
+  Wire1.begin(BME_SDA, BME_SCL);
+  bmeFound = bme.begin(0x76,&Wire1);
 
   if (bmeFound) {
     Serial.println("BME280 OK");

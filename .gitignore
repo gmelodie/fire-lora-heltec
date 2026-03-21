@@ -1,4 +1,5 @@
 secrets.h
-api/__pycache__/*
+api/__pycache__/
 *.db
 *.pem
+api/venv/

@@ -39,6 +39,7 @@ arduino-cli lib install "RadioLib"
 cd api
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
 ```
+4. Change API_URL in server.h
 
 ## Run the API server
 ```bash
