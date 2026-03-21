@@ -42,7 +42,13 @@ volatile bool receivedFlag = false;
 int retryCount = 0;
 
 bool bmeFound = false;
-bool batteryAvailable = true;   // battery ADC always readable, but we keep flag
+
+#ifndef BATTERY_AVAILABLE
+#define BATTERY_AVAILABLE 0
+#endif
+
+bool batteryAvailable = (BATTERY_AVAILABLE == 1);
+
 
 /* =========================================================
    OLED Power
@@ -157,6 +163,7 @@ void sendPing() {
   String msg = "PING|" + String(sensorID);
   transmit(msg);
 }
+
 
 void sendSensorData() {
   String temperature = "nil";

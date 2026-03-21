@@ -199,7 +199,7 @@ void handlePing(String msg)
   showPacket("PING", "Sensor " + String(id), "Responded");
 }
 
-String handleEnvironment(String msg, int16_t rssi)
+String handleData(String msg, int16_t rssi)
 {
   int p1 = msg.indexOf('|');
   int p2 = msg.indexOf('|', p1 + 1);
@@ -307,7 +307,7 @@ void loop()
   radio.startReceive();
 
   if (msg.startsWith("DATA|")) {
-    String payload = handleEnvironment(msg, rssi);
+    String payload = handleData(msg, rssi);
     if (payload.length() > 0) {
         httpsPost(API_URL "/sensor", payload);
     }
