@@ -59,12 +59,12 @@
    Battery to ADC VALUES
    ========================================================= */
 
-#define BAT_100   767
-#define BAT_80    715
-#define BAT_50    652
-#define BAT_25    615
-#define BAT_10    505
-#define BAT_DEAD  409
+#define BAT_100   1330
+#define BAT_80    1269
+#define BAT_50    1187
+#define BAT_25    1107
+#define BAT_10    970
+#define BAT_DEAD  900
 
 
 /* =========================================================
