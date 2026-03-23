@@ -83,6 +83,7 @@ int readBattery() {
   int sum = 0;
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
     sum += analogRead(BATTERY_PIN);
+    delay(20);
   }
   int raw = sum / NUM_ADC_SAMPLES;
 
