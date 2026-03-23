@@ -82,7 +82,10 @@
 
 
 /* =========================================================
-   API URL
+   UART (to Orange Pi Zero 2W)
    ========================================================= */
 
-#define API_URL "https://192.168.68.68:8443"
+#define UART_TX_PIN 1
+#define UART_RX_PIN 2
+#define UART_BAUD   115200
+
