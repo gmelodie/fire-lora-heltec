@@ -33,7 +33,7 @@ arduino-cli lib install "RadioLib"
 ```
 3. Change `./gateway/secrets.example.h` to `./gateway/secrets.h` and fill it with actual values.
 
-**Obs:** The api code fetches the `API_PASSWORD` string on the `secrets.h` file, so make sure that is set even though you're not compiling the sensor code.
+**Obs:** The api code fetches the `API_PASSWORD` and `API_URL` string on the `secrets.h` file, so make sure that is set even though you're not compiling the sensor code.
 **Obs2:** You'll have to generate the API's `cert.pem` and put that in `secrets.h` too:
 ```bash
 cd api

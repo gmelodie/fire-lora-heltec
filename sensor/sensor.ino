@@ -136,6 +136,7 @@ bool initRadio() {
   radio.setCodingRate(RX_CR);
   radio.setOutputPower(TX_POWER_DBM);
 
+  radio.setDio2AsRfSwitch();
   radio.setDio1Action(setFlag);
 
   Serial.println("Radio ready");
@@ -156,8 +157,8 @@ void transmit(String msg) {
     Serial.print("TX error: ");
     Serial.println(state);
   }
-  delay(100);
   radio.startReceive();
+  delay(100);
 }
 
 void sendPing() {
