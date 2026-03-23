@@ -67,7 +67,7 @@ def post_reading(payload: str) -> None:
                 "Content-Type": "application/json",
                 "X-API-Password": API_PASSWORD,
             },
-            verify=True,
+            verify=False,
             timeout=10,
         )
         log.info("POST %s -> %d", f"{API_URL}/sensor", resp.status_code)
@@ -91,6 +91,7 @@ def main() -> None:
                 continue
 
             line = raw.decode("utf-8", errors="ignore").strip()
+            log.debug("UART raw: %s", line)
             if not line.startswith("{"):
                 continue  # skip debug / non-JSON lines
 
