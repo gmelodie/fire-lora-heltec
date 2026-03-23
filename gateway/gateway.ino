@@ -1,11 +1,11 @@
 #include <SPI.h>
 #include <RadioLib.h>
 #include <Wire.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
+// #include <WiFi.h>
+// #include <WiFiClientSecure.h>
+// #include <HTTPClient.h>
 #include "HT_SSD1306Wire.h"
-#include "secrets.h"
+// #include "secrets.h"
 #include "../settings.h"
 
 /* =========================================================
@@ -28,8 +28,8 @@ void VextON()
 
 SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY);
 
-bool wifiConnected = false;
-unsigned long lastWifiRetry = 0;
+// bool wifiConnected = false;
+// unsigned long lastWifiRetry = 0;
 volatile bool receivedFlag = false;
 
 /* =========================================================
@@ -58,76 +58,76 @@ void showReady()
 }
 
 /* =========================================================
-   WiFi
+   WiFi (disabled — data is forwarded via UART to Orange Pi)
    ========================================================= */
 
-bool connectWiFi()
-{
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int retries = 0;
-  while (WiFi.status() != WL_CONNECTED && retries < 20)
-  {
-    delay(500);
-    Serial.print(".");
-    retries++;
-  }
-
-  wifiConnected = WiFi.status() == WL_CONNECTED;
-
-  return wifiConnected;
-}
-
-void maintainWiFi()
-{
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    wifiConnected = true;
-    return;
-  }
-
-  wifiConnected = false;
-
-  if (millis() - lastWifiRetry > WIFI_RETRY_INTERVAL)
-  {
-    lastWifiRetry = millis();
-    Serial.print("Maintaining WiFi");
-    wifiConnected = connectWiFi();
-    Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
-  }
-}
+// bool connectWiFi()
+// {
+//   WiFi.begin(WIFI_SSID, WIFI_PASS);
+//
+//   int retries = 0;
+//   while (WiFi.status() != WL_CONNECTED && retries < 20)
+//   {
+//     delay(500);
+//     Serial.print(".");
+//     retries++;
+//   }
+//
+//   wifiConnected = WiFi.status() == WL_CONNECTED;
+//
+//   return wifiConnected;
+// }
+//
+// void maintainWiFi()
+// {
+//   if (WiFi.status() == WL_CONNECTED)
+//   {
+//     wifiConnected = true;
+//     return;
+//   }
+//
+//   wifiConnected = false;
+//
+//   if (millis() - lastWifiRetry > WIFI_RETRY_INTERVAL)
+//   {
+//     lastWifiRetry = millis();
+//     Serial.print("Maintaining WiFi");
+//     wifiConnected = connectWiFi();
+//     Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
+//   }
+// }
 
 /* =========================================================
-   HTTPS helpers
+   HTTPS helpers (disabled — posting is handled by Orange Pi)
    ========================================================= */
 
-bool httpsPost(String url, String payload)
-{
-  if (!wifiConnected)
-    return false;
-
-  WiFiClientSecure client;
-  client.setCACert(API_CERT); //If you dont have a valid cert, you might want to use "client.setInsecure();"
-
-  HTTPClient https;
-
-  if (!https.begin(client, url))
-  {
-    Serial.println("HTTPS begin failed");
-    return false;
-  }
-
-  https.addHeader("Content-Type", "application/json");
-  https.addHeader("X-API-Password", API_PASSWORD);
-
-  int code = https.POST(payload);
-
-  Serial.print("HTTPS Response: ");
-  Serial.println(code);
-
-  https.end();
-  return code > 0;
-}
+// bool httpsPost(String url, String payload)
+// {
+//   if (!wifiConnected)
+//     return false;
+//
+//   WiFiClientSecure client;
+//   client.setCACert(API_CERT);
+//
+//   HTTPClient https;
+//
+//   if (!https.begin(client, url))
+//   {
+//     Serial.println("HTTPS begin failed");
+//     return false;
+//   }
+//
+//   https.addHeader("Content-Type", "application/json");
+//   https.addHeader("X-API-Password", API_PASSWORD);
+//
+//   int code = https.POST(payload);
+//
+//   Serial.print("HTTPS Response: ");
+//   Serial.println(code);
+//
+//   https.end();
+//   return code > 0;
+// }
 
 /* =========================================================
    LoRa helpers
@@ -244,7 +244,8 @@ String handleData(String msg, int16_t rssi)
 
 void setup()
 {
-  Serial.begin(115200);
+  Serial.begin(115200);   // USB debug
+  Serial1.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);  // to Orange Pi
   delay(500);
 
   VextON();
@@ -255,8 +256,8 @@ void setup()
 
   showBootScreen();
 
-  wifiConnected = connectWiFi();
-  Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
+  // wifiConnected = connectWiFi();
+  // Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
 
   if (!initRadio())
   {
@@ -276,7 +277,7 @@ void setup()
 
 void loop()
 {
-  maintainWiFi();
+  // maintainWiFi();
 
   if (!receivedFlag)
     return;
@@ -309,7 +310,9 @@ void loop()
   if (msg.startsWith("DATA|")) {
     String payload = handleData(msg, rssi);
     if (payload.length() > 0) {
-        httpsPost(API_URL "/sensor", payload);
+      // Forward JSON payload to Orange Pi via UART for HTTP posting
+      Serial1.println(payload);
+      // httpsPost(API_URL "/sensor", payload);
     }
   }
   Serial.println();
