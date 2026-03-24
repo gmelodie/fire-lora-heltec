@@ -4,6 +4,7 @@
 #include <Adafruit_BME280.h>
 #include "HT_SSD1306Wire.h"
 #include <EEPROM.h>
+#include "esp_sleep.h"
 #include "../settings.h"
 
 /* =========================================================
@@ -141,6 +142,21 @@ bool initRadio() {
 
   Serial.println("Radio ready");
   return true;
+}
+
+/* =========================================================
+   Sleep
+   ========================================================= */
+
+void lightSleep(uint32_t ms) {
+  display.displayOff();
+  radio.sleep();
+  esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
+  esp_light_sleep_start();
+  // resumed after wakeup
+  display.displayOn();
+  initRadio();
+  radio.startReceive();
 }
 
 /* =========================================================
@@ -347,5 +363,11 @@ void loop() {
       Serial.println("ACK failed");
       waitingAck = false;
     }
+  }
+
+  if (gatewayFound && !waitingAck && !firstTx) {
+    long remaining = (long)(lastTx + TX_INTERVAL) - (long)millis();
+    if (remaining > 5000)
+      lightSleep((uint32_t)(remaining - 2000));
   }
 }
