@@ -35,6 +35,7 @@ bool waitingAck = false;
 
 unsigned long lastTx = 0;
 bool firstTx = true;
+unsigned long wakeTime = 0;
 
 bool screenOn = false;
 unsigned long screenTimer = 0;
@@ -321,6 +322,7 @@ void setup() {
   radio.startReceive();
 
   lastTx = millis();
+  wakeTime = millis();
 }
 
 /* =========================================================
@@ -367,7 +369,10 @@ void loop() {
 
   if (gatewayFound && !waitingAck && !firstTx) {
     long remaining = (long)(lastTx + TX_INTERVAL) - (long)millis();
-    if (remaining > 5000)
+    if (remaining > 5000) {
+      Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
       lightSleep((uint32_t)(remaining - 2000));
+      wakeTime = millis();
+    }
   }
 }

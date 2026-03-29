@@ -91,6 +91,7 @@ def main() -> None:
                 continue
 
             line = raw.decode("utf-8", errors="ignore").strip()
+            line = line.replace(":nil", ":null")
             log.debug("UART raw: %s", line)
             if not line.startswith("{"):
                 continue  # skip debug / non-JSON lines
