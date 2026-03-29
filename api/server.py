@@ -67,10 +67,10 @@ def insert_reading(data):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data["sensor_id"],
-        float(data["temperature"]) if data["temperature"] != "nil" else None,
-        float(data["humidity"])    if data["humidity"]    != "nil" else None,
-        float(data["pressure"])    if data["pressure"]    != "nil" else None,
-        int(data["battery"])       if data["battery"]     != "nil" else None,
+        float(data["temperature"]) if data["temperature"] is not None else None,
+        float(data["humidity"])    if data["humidity"]    is not None else None,
+        float(data["pressure"])    if data["pressure"]    is not None else None,
+        int(data["battery"])       if data["battery"]     is not None else None,
         int(data["counter"]),
         int(data["rssi"]),
         int(time.time())
