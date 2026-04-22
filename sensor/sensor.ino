@@ -66,6 +66,7 @@ void VextON() {
    ========================================================= */
 
 void showMessage(String l1, String l2 = "") {
+  display.displayOn();
   display.clear();
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);
@@ -85,7 +86,7 @@ int readBattery() {
   int sum = 0;
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
     sum += analogRead(BATTERY_PIN);
-    delay(20);
+    delay(5);
   }
   int raw = sum / NUM_ADC_SAMPLES;
 
@@ -154,8 +155,7 @@ void lightSleep(uint32_t ms) {
   radio.sleep();
   esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
   esp_light_sleep_start();
-  // resumed after wakeup
-  display.displayOn();
+  // resumed after wakeup — display stays off until showMessage() is called
   initRadio();
   radio.startReceive();
 }
@@ -191,6 +191,7 @@ void sendSensorData() {
   String battery = "nil";
 
   if (bmeFound) {
+    bme.takeForcedMeasurement();
     temperature = String(bme.readTemperature(), 2);
     humidity = String(bme.readHumidity(), 2);
     pressure = String(bme.readPressure() / 100.0F, 2);
@@ -302,9 +303,14 @@ void setup() {
   loadSensorID();
   delay(2000);
   Wire1.begin(BME_SDA, BME_SCL);
-  bmeFound = bme.begin(0x76,&Wire1);
+  bmeFound = bme.begin(0x76, &Wire1);
 
   if (bmeFound) {
+    bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::FILTER_OFF);
     Serial.println("BME280 OK");
     showMessage("BME280", "Detected");
   } else {
@@ -336,6 +342,7 @@ void loop() {
   if (screenOn && millis() - screenTimer > SCREEN_TIMEOUT) {
     display.clear();
     display.display();
+    display.displayOff();
     screenOn = false;
   }
 
