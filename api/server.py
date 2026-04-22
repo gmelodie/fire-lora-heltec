@@ -1,10 +1,13 @@
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import psycopg2
 import psycopg2.extras
 import os
 import time
 import re
 from pathlib import Path
+from typing import Optional
 
 app = FastAPI()
 
@@ -99,14 +102,20 @@ def insert_reading(data):
     conn.close()
 
 # -------------------------
+# Auth helper
+# -------------------------
+
+def require_auth(req: Request):
+    if req.headers.get("X-API-Password") != API_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+# -------------------------
 # Sensor Endpoint
 # -------------------------
 
 @app.post("/sensor")
 async def receive_sensor(req: Request):
-    password = req.headers.get("X-API-Password")
-    if password != API_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    require_auth(req)
 
     try:
         payload = await req.json()
@@ -122,20 +131,82 @@ async def receive_sensor(req: Request):
     print("Sensor:", payload)
     return {"status": "ok"}
 
-@app.get("/readings")
-async def get_readings(req: Request):
-    password = req.headers.get("X-API-Password")
-    if password != API_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+@app.get("/sensors")
+async def get_sensors(req: Request):
+    require_auth(req)
+
+    conn = get_db_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT sensor_id FROM readings ORDER BY sensor_id")
+    rows = cur.fetchall()
+    conn.close()
+
+    return {"sensors": [row[0] for row in rows]}
+
+@app.get("/readings/latest")
+async def get_latest_readings(req: Request):
+    require_auth(req)
 
     conn = get_db_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
-        SELECT * FROM readings
-        ORDER BY timestamp DESC
-        LIMIT 10
+        SELECT DISTINCT ON (sensor_id)
+            id, sensor_id, temperature, humidity, pressure,
+            battery, counter, rssi, timestamp
+        FROM readings
+        ORDER BY sensor_id, timestamp DESC
     """)
     rows = cur.fetchall()
     conn.close()
 
     return [dict(row) for row in rows]
+
+@app.get("/readings")
+async def get_readings(
+    req: Request,
+    sensor_id: Optional[str] = None,
+    from_ts: Optional[int] = None,
+    to_ts: Optional[int] = None,
+    limit: int = 500,
+):
+    require_auth(req)
+
+    conditions = []
+    params = []
+    if sensor_id is not None:
+        conditions.append("sensor_id = %s")
+        params.append(sensor_id)
+    if from_ts is not None:
+        conditions.append("timestamp >= %s")
+        params.append(from_ts)
+    if to_ts is not None:
+        conditions.append("timestamp <= %s")
+        params.append(to_ts)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params.append(min(limit, 2000))
+
+    conn = get_db_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(f"""
+        SELECT id, sensor_id, temperature, humidity, pressure,
+               battery, counter, rssi, timestamp
+        FROM readings
+        {where}
+        ORDER BY timestamp ASC
+        LIMIT %s
+    """, params)
+    rows = cur.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+# -------------------------
+# Dashboard
+# -------------------------
+
+@app.get("/")
+async def dashboard():
+    return FileResponse("static/index.html")
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
