@@ -1,22 +1,26 @@
 from fastapi import FastAPI, Request, HTTPException
-import sqlite3
+import psycopg2
+import psycopg2.extras
+import os
 import time
 import re
 from pathlib import Path
 
 app = FastAPI()
 
-DB_FILE = "sensor_data.db"
 SECRETS_FILE = "../gateway/secrets.h"
 
 # -------------------------
-# Load password from secrets.h
+# Load password from env or secrets.h
 # -------------------------
 
 def load_password():
+    env_pw = os.getenv("API_PASSWORD")
+    if env_pw:
+        return env_pw
     path = Path(SECRETS_FILE)
     if not path.exists():
-        raise RuntimeError(f"Secrets file not found: {SECRETS_FILE}")
+        raise RuntimeError(f"API_PASSWORD env var not set and secrets file not found: {SECRETS_FILE}")
     content = path.read_text()
     match = re.search(r'#define\s+API_PASSWORD\s+"([^"]+)"', content)
     if not match:
@@ -29,12 +33,28 @@ API_PASSWORD = load_password()
 # Database
 # -------------------------
 
+def get_db_conn():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", 5432)),
+        dbname=os.getenv("DB_NAME", "sensor_db"),
+        user=os.getenv("DB_USER", "postgres"),
+        password=os.getenv("DB_PASSWORD", "postgres"),
+    )
+
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    for attempt in range(10):
+        try:
+            conn = get_db_conn()
+            break
+        except psycopg2.OperationalError:
+            if attempt == 9:
+                raise
+            time.sleep(2)
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS readings (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            id          SERIAL PRIMARY KEY,
             sensor_id   TEXT,
             temperature REAL,
             humidity    REAL,
@@ -51,7 +71,7 @@ def init_db():
 init_db()
 
 def insert_reading(data):
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_conn()
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO readings (
@@ -64,7 +84,7 @@ def insert_reading(data):
             rssi,
             timestamp
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         data["sensor_id"],
         float(data["temperature"]) if data["temperature"] is not None else None,
@@ -108,8 +128,8 @@ async def get_readings(req: Request):
     if password != API_PASSWORD:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
+    conn = get_db_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("""
         SELECT * FROM readings
         ORDER BY timestamp DESC
@@ -118,5 +138,4 @@ async def get_readings(req: Request):
     rows = cur.fetchall()
     conn.close()
 
-    columns = ["id", "sensor_id", "temperature", "humidity", "pressure", "battery", "counter", "rssi", "timestamp"]
-    return [dict(zip(columns, row)) for row in rows]
+    return [dict(row) for row in rows]
