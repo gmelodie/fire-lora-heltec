@@ -81,11 +81,4 @@
 #define BME_SCL 3
 
 
-/* =========================================================
-   UART (to Orange Pi Zero 2W)
-   ========================================================= */
-
-#define UART_TX_PIN 1
-#define UART_RX_PIN 2
-#define UART_BAUD   115200
 

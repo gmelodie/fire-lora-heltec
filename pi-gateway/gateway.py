@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Superseded by direct ESP32 HTTPS posting. Retained for reference.
 """
 Orange Pi Zero 2W gateway: reads JSON sensor payloads from the Heltec
 gateway over UART2 (rx_2) and forwards them to the API via HTTPS POST.
