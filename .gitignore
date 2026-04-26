@@ -4,3 +4,4 @@ api/__pycache__/
 *.db
 *.pem
 api/venv/
+scripts/venv

@@ -168,6 +168,38 @@ All endpoints require the `X-API-Password` header.
 
 ## Utilities
 
+### Plot sensor data
+
+`scripts/plot.py` queries the API and produces time-series charts for any sensor/metric combination.
+
+```bash
+cd scripts
+pip install -r requirements.txt
+
+# All sensors, all metrics, interactive window
+python3 plot.py --host https://192.168.x.x:8443 --password yourpassword --no-verify
+
+# One sensor, one metric, saved to file
+python3 plot.py --host https://192.168.x.x:8443 --password yourpassword --no-verify \
+  --sensor 1 --metric temperature \
+  --from 2024-01-01 --to 2024-01-07 \
+  --out week.png
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--host` | `$API_URL` | API base URL |
+| `--password` | `$API_PASSWORD` | API password |
+| `--sensor` | all sensors | Filter to one sensor ID |
+| `--metric` | all metrics | One of `temperature`, `humidity`, `pressure`, `battery`, `rssi` |
+| `--from` | — | Start date `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM:SS` |
+| `--to` | — | End date (same format) |
+| `--limit` | 2000 | Max readings per sensor |
+| `--no-verify` | off | Skip SSL certificate verification (use with self-signed certs) |
+| `--out` | — | Save to file instead of opening interactively |
+
+`--host` and `--password` can also be set via the `API_URL` and `API_PASSWORD` environment variables.
+
 ### Measure sensor awake time
 
 `sensor/collect_samples.py` reads `AWAKE_MS` lines from the sensor over USB serial and computes the average awake duration (useful for tuning deep-sleep power budgets):
