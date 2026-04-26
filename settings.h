@@ -49,7 +49,7 @@
    Timing
    ========================================================= */
 
-#define TX_INTERVAL 5400000UL
+#define TX_INTERVAL 5400000UL // milliseconds - 90mins
 #define ACK_TIMEOUT 2000
 #define MAX_RETRIES 3
 #define SCREEN_TIMEOUT 5000

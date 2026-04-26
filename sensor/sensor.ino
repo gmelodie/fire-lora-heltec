@@ -150,7 +150,6 @@ void lightSleep(uint32_t ms) {
   esp_light_sleep_start();
   // resumed after wakeup — display stays off until showMessage() is called
   initRadio();
-  radio.startReceive();
 }
 
 /* =========================================================
@@ -379,11 +378,14 @@ void loop() {
   }
 
   if (gatewayFound && !waitingAck && !firstTx) {
-    long remaining = (long)(lastTx + TX_INTERVAL) - (long)millis();
-    if (remaining > 5000) {
-      Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
-      lightSleep((uint32_t)(remaining - 2000));
-      wakeTime = millis();
+    unsigned long elapsed = millis() - lastTx;
+    if (elapsed < TX_INTERVAL) {
+      unsigned long remaining = TX_INTERVAL - elapsed;
+      if (remaining > 5000) {
+        Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
+        lightSleep(remaining - 2000);
+        wakeTime = millis();
+      }
     }
   }
 }
