@@ -18,7 +18,7 @@
 #define API_URL "https://192.168.x.x:8443"
 
 // ── Database ───────────────────────────────────────────────────────────────
-#define DB_PASSWORD "your_db_password"
+#define DB_PASSWORD "sensor_db_password"
 
 /* Root certificate for the API server (PEM format) */
 static const char *API_CERT PROGMEM = R"EOF(

@@ -38,9 +38,8 @@ _DB_PASSWORD  = os.getenv("DB_PASSWORD")  or _parse_define(_secrets_content, "DB
 def get_db_conn():
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
-        port=int(os.getenv("DB_PORT", 5432)),
-        dbname=os.getenv("DB_NAME", "sensor_db"),
-        user=os.getenv("DB_USER", "postgres"),
+        dbname="sensor_db",
+        user="postgres",
         password=_DB_PASSWORD,
     )
 

@@ -270,6 +270,7 @@ void setup()
 
   wifiConnected = connectWiFi();
   Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
+  showPacket(wifiConnected ? "WiFi OK" : "WiFi FAILED", WiFi.localIP().toString(), "");
 
   if (!initRadio())
   {
@@ -278,8 +279,6 @@ void setup()
       ;
   }
   Serial.println("Radio OK");
-  Serial.println();
-
 
   showReady();
 }
@@ -323,7 +322,8 @@ void loop()
   if (msg.startsWith("DATA|")) {
     String payload = handleData(msg, rssi);
     if (payload.length() > 0) {
-      httpsPost(API_URL "/sensor", payload);
+      bool ok = httpsPost(API_URL "/sensor", payload);
+      showPacket(ok ? "API OK" : "API FAILED", "", "");
     }
   }
   Serial.println();

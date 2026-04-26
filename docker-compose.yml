@@ -2,13 +2,15 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: ${DB_NAME:-sensor_db}
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: sensor_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: sensor_db_password
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -16,15 +18,11 @@ services:
 
   api:
     build: ./api
-    ports:
-      - "${API_PORT:-8000}:8000"
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-sensor_db}
-      DB_USER: ${DB_USER:-postgres}
+    network_mode: host
     volumes:
       - ./secrets.h:/secrets.h:ro
+      - ./cert.pem:/certs/cert.pem:ro
+      - ./key.pem:/certs/key.pem:ro
     depends_on:
       db:
         condition: service_healthy

@@ -205,6 +205,21 @@ python3 sensor/collect_samples.py [port] [output_file]
 
 It collects 30 samples and prints the average awake time in milliseconds.
 
+## TLS Certificate
+
+The API serves HTTPS directly via uvicorn. Generate a self-signed cert on the server:
+
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
+  -days 3650 -nodes \
+  -subj "/CN=fire-sensor-api" \
+  -addext "subjectAltName=IP:<your-server-ip>"
+```
+
+Then paste the contents of `cert.pem` into the `API_CERT` field in `secrets.h`. The gateway board uses it to verify the server's identity.
+
+`cert.pem` and `key.pem` must be present at the repo root when starting the server — they are mounted into the API container automatically. Both are gitignored (`*.pem`).
+
 ## Orange Pi Gateway (legacy)
 
 `pi-gateway/gateway.py` is retained for reference. It was the original bridge between the Heltec gateway board (via UART) and the API, superseded by direct HTTPS posting from the gateway board itself.
