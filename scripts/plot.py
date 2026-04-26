@@ -86,7 +86,7 @@ def main():
     if args.sensor:
         sensor_ids = [args.sensor]
     else:
-        data = api_get(host, args.password, "/sensor", verify=verify)
+        data = api_get(host, args.password, "/sensors", verify=verify)
         sensor_ids = data.get("sensors", [])
         if not sensor_ids:
             sys.exit("No sensors found")

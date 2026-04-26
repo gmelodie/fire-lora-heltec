@@ -137,6 +137,39 @@ bool httpsPost(String url, String payload)
   return code > 0;
 }
 
+bool checkApi()
+{
+  if (!wifiConnected)
+    return false;
+
+  for (int attempt = 0; attempt < 3; attempt++)
+  {
+    WiFiClientSecure client;
+    client.setCACert(API_CERT);
+
+    HTTPClient https;
+    if (!https.begin(client, API_URL "/readings/latest"))
+    {
+      delay(2000);
+      continue;
+    }
+
+    https.addHeader("X-API-Password", API_PASSWORD);
+    int code = https.GET();
+    https.end();
+
+    Serial.printf("API check attempt %d: %d\n", attempt + 1, code);
+
+    if (code > 0)
+      return true;
+
+    showPacket("API ERR", String(code), "Retrying...");
+    delay(2000);
+  }
+
+  return false;
+}
+
 /* =========================================================
    LoRa helpers
    ========================================================= */
@@ -271,6 +304,12 @@ void setup()
   wifiConnected = connectWiFi();
   Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
   showPacket(wifiConnected ? "WiFi OK" : "WiFi FAILED", WiFi.localIP().toString(), "");
+  delay(1000);
+
+  bool apiOk = checkApi();
+  Serial.println(apiOk ? "API OK" : "API FAILED");
+  showPacket(apiOk ? "API OK" : "API FAILED", API_URL, "");
+  delay(1000);
 
   if (!initRadio())
   {

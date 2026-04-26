@@ -7,4 +7,6 @@ if [ ! -f secrets.h ]; then
     exit 1
 fi
 
+grep 'DB_PASSWORD' secrets.h | sed 's/.*"\(.*\)".*/\1/' > .db_password
+
 docker compose up -d --build

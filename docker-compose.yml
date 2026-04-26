@@ -4,7 +4,9 @@ services:
     environment:
       POSTGRES_DB: sensor_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: sensor_db_password
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     ports:
       - "5432:5432"
     volumes:
@@ -18,7 +20,10 @@ services:
 
   api:
     build: ./api
-    network_mode: host
+    ports:
+      - "8443:8443"
+    environment:
+      DB_HOST: db
     volumes:
       - ./secrets.h:/secrets.h:ro
       - ./cert.pem:/certs/cert.pem:ro
@@ -27,6 +32,10 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+
+secrets:
+  db_password:
+    file: .db_password
 
 volumes:
   postgres_data:

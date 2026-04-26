@@ -1,4 +1,5 @@
 secrets.h
+.db_password
 *.db
 *.pem
 venv/
