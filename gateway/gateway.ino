@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <time.h>
 #include <RadioLib.h>
 #include <Wire.h>
 #include <WiFi.h>
@@ -115,7 +116,7 @@ bool httpsPost(String url, String payload)
     return false;
 
   WiFiClientSecure client;
-  client.setCACert(API_CERT);
+  client.setInsecure();
 
   HTTPClient https;
 
@@ -145,7 +146,7 @@ bool checkApi()
   for (int attempt = 0; attempt < 3; attempt++)
   {
     WiFiClientSecure client;
-    client.setCACert(API_CERT);
+    client.setInsecure();
 
     HTTPClient https;
     if (!https.begin(client, API_URL "/readings/latest"))
@@ -184,8 +185,8 @@ void sendAck(uint8_t id, uint32_t counter)
   String ack = "ACK|" + String(id) + "|" + String(counter);
 
   radio.standby();
-  int state = radio.transmit(ack);
-
+  radio.transmit(ack);
+  receivedFlag = false;
   radio.startReceive();
 }
 
@@ -194,8 +195,8 @@ void sendPong(uint8_t id)
   String pong = "PONG|" + String(id);
 
   radio.standby();
-  int state = radio.transmit(pong);
-
+  radio.transmit(pong);
+  receivedFlag = false;
   radio.startReceive();
 }
 
@@ -264,19 +265,14 @@ String handleData(String msg, int16_t rssi)
       "Sensor " + String(id),
       "T " + temp + " H " + hum,
       "B " + batt + " RSSI " + String(rssi));
+  auto jsonVal = [](const String &v) -> String { return v == "nil" ? "null" : v; };
   return "{\"sensor_id\":\"" + String(id) + "\","
-                                            "\"temperature\":" +
-         temp + ","
-                "\"humidity\":" +
-         hum + ","
-               "\"pressure\":" +
-         pres + ","
-                "\"battery\":" +
-         batt + ","
-                "\"counter\":" +
-         String(counter) + ","
-                           "\"rssi\":" +
-         String(rssi) + "}";
+         "\"temperature\":" + jsonVal(temp) + ","
+         "\"humidity\":" + jsonVal(hum) + ","
+         "\"pressure\":" + jsonVal(pres) + ","
+         "\"battery\":" + jsonVal(batt) + ","
+         "\"counter\":" + String(counter) + ","
+         "\"rssi\":" + String(rssi) + "}";
 }
 
 /* =========================================================
@@ -305,6 +301,16 @@ void setup()
   Serial.println(wifiConnected ? "\nWiFi OK" : "\nWiFi FAILED");
   showPacket(wifiConnected ? "WiFi OK" : "WiFi FAILED", WiFi.localIP().toString(), "");
   delay(1000);
+
+  if (wifiConnected)
+  {
+    configTime(0, 0, "pool.ntp.org");
+    struct tm t;
+    int tries = 0;
+    while (!getLocalTime(&t) && tries++ < 20)
+      delay(500);
+    Serial.println(getLocalTime(&t) ? "NTP OK" : "NTP FAILED");
+  }
 
   bool apiOk = checkApi();
   Serial.println(apiOk ? "API OK" : "API FAILED");

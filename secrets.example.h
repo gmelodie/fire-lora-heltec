@@ -19,10 +19,3 @@
 
 // ── Database ───────────────────────────────────────────────────────────────
 #define DB_PASSWORD "sensor_db_password"
-
-/* Root certificate for the API server (PEM format) */
-static const char *API_CERT PROGMEM = R"EOF(
------BEGIN CERTIFICATE-----
-...your cert here...
------END CERTIFICATE-----
-)EOF";
