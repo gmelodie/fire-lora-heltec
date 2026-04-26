@@ -7,21 +7,15 @@
 #ifdef USE_EAP
 #include "esp_wpa2.h"
 #endif
-#include "HT_SSD1306Wire.h"
+#include <SSD1306Wire.h>
 #include "secrets.h"
-#include "../settings.h"
+#include "settings.h"
 
 /* =========================================================
-   Display (Heltec native OLED driver)
+   Display
    ========================================================= */
 
-static SSD1306Wire display(
-    0x3c,
-    500000,
-    SDA_OLED,
-    SCL_OLED,
-    GEOMETRY_128_64,
-    RST_OLED);
+static SSD1306Wire display(0x3c, SDA_OLED, SCL_OLED);
 
 void VextON()
 {
@@ -263,6 +257,11 @@ void setup()
 
   VextON();
   delay(100);
+
+  pinMode(RST_OLED, OUTPUT);
+  digitalWrite(RST_OLED, LOW);
+  delay(20);
+  digitalWrite(RST_OLED, HIGH);
 
   display.init();
   display.setFont(ArialMT_Plain_10);

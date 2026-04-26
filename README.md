@@ -7,14 +7,12 @@ Using LoRa Heltec V3 boards to detect wildfires in the Brazilian Cerrado.
 ## Architecture
 
 ```
-[Sensor nodes]  --LoRa-->  [Heltec V3 gateway]  --UART-->  [Orange Pi Zero 2W]
-                                                                     |
-                                                              HTTP POST /sensor
-                                                                     |
-                                                            [FastAPI + PostgreSQL]
-                                                                     |
-                                                           http://host:8000  (dashboard)
+[Sensor nodes]  --LoRa-->  [Heltec V3 gateway]  --HTTPS POST-->  [FastAPI + PostgreSQL]
+                                                                          |
+                                                               http://host:8000  (dashboard)
 ```
+
+The gateway board posts sensor readings directly to the API over HTTPS — no intermediate Pi needed.
 
 ## Firmware Setup (Arduino)
 
@@ -37,6 +35,7 @@ arduino-cli core install esp32:esp32
 arduino-cli lib install "Adafruit BME280 Library"
 arduino-cli lib install "Adafruit Unified Sensor"
 arduino-cli lib install "RadioLib"
+arduino-cli lib install "ESP8266 and ESP32 OLED driver for SSD1306 displays"
 ```
 
 ### 3. Configure secrets
@@ -44,11 +43,50 @@ arduino-cli lib install "RadioLib"
 Copy `gateway/secrets.example.h` to `gateway/secrets.h` and fill in your values:
 
 ```c
-#define WIFI_SSID     "your_wifi"
-#define WIFI_PASS     "your_password"
-#define API_PASSWORD  "your_api_password"   // must match API_PASSWORD in .env
-#define API_URL       "http://192.168.x.x:8000"
+// ── Regular WPA2 (home / office router) ───────────────────────────────────
+#define WIFI_SSID "your_wifi"
+#define WIFI_PASS "your_password"
+
+// ── Eduroam / WPA2-Enterprise ──────────────────────────────────────────────
+// Uncomment USE_EAP and fill in the three EAP fields instead.
+// #define USE_EAP
+// #define EAP_IDENTITY "user@university.edu"
+// #define EAP_USERNAME "user@university.edu"
+// #define EAP_PASSWORD "your_eap_password"
+
+// ── API ────────────────────────────────────────────────────────────────────
+#define API_PASSWORD "your_password"   // must match API_PASSWORD in .env
+#define API_URL "https://192.168.x.x:8443"
+
+/* Root certificate for the API server (PEM format) */
+static const char *API_CERT PROGMEM = R"EOF(
+-----BEGIN CERTIFICATE-----
+...your cert here...
+-----END CERTIFICATE-----
+)EOF";
 ```
+
+### 4. Compile and upload
+
+Use `recompile.sh` to compile and flash a sketch:
+
+```bash
+./recompile.sh <project> <port>
+```
+
+| Argument | Description |
+|---|---|
+| `project` | `sensor` or `gateway` |
+| `port` | Serial port, e.g. `/dev/ttyUSB0` |
+
+Examples:
+
+```bash
+./recompile.sh gateway /dev/ttyUSB0
+./recompile.sh sensor /dev/ttyUSB0
+```
+
+After flashing, `recompile.sh` opens a serial monitor at 115200 baud automatically.
 
 ## Server Setup (Docker)
 
@@ -117,16 +155,6 @@ Navigate to `http://<host>:8000` and enter the API password.
 | Current State | Live card per sensor — temperature, humidity, pressure, battery, RSSI, last seen. Refreshes every 30 s. |
 | History | Select sensor, metric, and a time range to plot a time-series chart. |
 
-## Orange Pi Gateway
-
-The gateway script bridges the Heltec gateway board (UART) to the API.
-
-```bash
-cd pi-gateway
-pip install -r requirements.txt
-python3 gateway.py
-```
-
 ## API Endpoints
 
 All endpoints require the `X-API-Password` header.
@@ -137,3 +165,21 @@ All endpoints require the `X-API-Password` header.
 | `GET` | `/sensors` | List distinct sensor IDs |
 | `GET` | `/readings/latest` | Latest reading per sensor |
 | `GET` | `/readings` | Historical readings — supports `sensor_id`, `from_ts`, `to_ts`, `limit` query params |
+
+## Utilities
+
+### Measure sensor awake time
+
+`sensor/collect_samples.py` reads `AWAKE_MS` lines from the sensor over USB serial and computes the average awake duration (useful for tuning deep-sleep power budgets):
+
+```bash
+python3 sensor/collect_samples.py [port] [output_file]
+# default port: /dev/ttyUSB0
+# default output: samples.txt
+```
+
+It collects 30 samples and prints the average awake time in milliseconds.
+
+## Orange Pi Gateway (legacy)
+
+`pi-gateway/gateway.py` is retained for reference. It was the original bridge between the Heltec gateway board (via UART) and the API, superseded by direct HTTPS posting from the gateway board itself.

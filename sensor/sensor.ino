@@ -2,23 +2,16 @@
 #include <RadioLib.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
-#include "HT_SSD1306Wire.h"
+#include <SSD1306Wire.h>
 #include <EEPROM.h>
 #include "esp_sleep.h"
-#include "../settings.h"
+#include "settings.h"
 
 /* =========================================================
-   Display (Heltec native driver)
+   Display
    ========================================================= */
 
-static SSD1306Wire display(
-  0x3c,
-  500000,
-  SDA_OLED,
-  SCL_OLED,
-  GEOMETRY_128_64,
-  RST_OLED
-);
+static SSD1306Wire display(0x3c, SDA_OLED, SCL_OLED);
 
 SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY);
 Adafruit_BME280 bme;
@@ -288,6 +281,11 @@ void setup() {
 
   VextON();
   delay(100);
+
+  pinMode(RST_OLED, OUTPUT);
+  digitalWrite(RST_OLED, LOW);
+  delay(20);
+  digitalWrite(RST_OLED, HIGH);
 
   display.init();
   display.setFont(ArialMT_Plain_10);
