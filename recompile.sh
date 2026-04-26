@@ -9,9 +9,12 @@ fi
 PROJECT=$1
 PORT=$2
 BOARD="esp32:esp32:heltec_wifi_lora_32_V3"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Using board: $BOARD"
 echo "Port: $PORT"
+
+ln -sf "$REPO_ROOT/secrets.h" "$PROJECT/secrets.h"
 
 arduino-cli compile \
   --fqbn "$BOARD" \

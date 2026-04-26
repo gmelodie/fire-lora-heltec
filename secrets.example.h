@@ -14,13 +14,15 @@
 // #define EAP_PASSWORD "your_eap_password"
 
 // ── API ────────────────────────────────────────────────────────────────────
-#define API_PASSWORD "your_password"
-#define API_URL "https://192.168.68.68:8443"
+#define API_PASSWORD "your_api_password"
+#define API_URL "https://192.168.x.x:8443"
 
-/* Root certificate (PEM format) */
+// ── Database ───────────────────────────────────────────────────────────────
+#define DB_PASSWORD "your_db_password"
+
+/* Root certificate for the API server (PEM format) */
 static const char *API_CERT PROGMEM = R"EOF(
 -----BEGIN CERTIFICATE-----
-MIID......
-.....YOUR CERT HERE.....
+...your cert here...
 -----END CERTIFICATE-----
 )EOF";

@@ -11,26 +11,25 @@ from typing import Optional
 
 app = FastAPI()
 
-SECRETS_FILE = "../gateway/secrets.h"
+# secrets.h is mounted at /secrets.h in Docker; fall back to ../secrets.h for local dev
+_SECRETS_CANDIDATES = ["/secrets.h", "../secrets.h"]
 
-# -------------------------
-# Load password from env or secrets.h
-# -------------------------
+def _find_secrets():
+    for p in _SECRETS_CANDIDATES:
+        path = Path(p)
+        if path.exists():
+            return path
+    raise RuntimeError(f"secrets.h not found (tried: {_SECRETS_CANDIDATES})")
 
-def load_password():
-    env_pw = os.getenv("API_PASSWORD")
-    if env_pw:
-        return env_pw
-    path = Path(SECRETS_FILE)
-    if not path.exists():
-        raise RuntimeError(f"API_PASSWORD env var not set and secrets file not found: {SECRETS_FILE}")
-    content = path.read_text()
-    match = re.search(r'#define\s+API_PASSWORD\s+"([^"]+)"', content)
+def _parse_define(content, name):
+    match = re.search(rf'#define\s+{name}\s+"([^"]+)"', content)
     if not match:
-        raise RuntimeError("API_PASSWORD not found in secrets.h")
+        raise RuntimeError(f"{name} not found in secrets.h")
     return match.group(1)
 
-API_PASSWORD = load_password()
+_secrets_content = _find_secrets().read_text()
+API_PASSWORD = os.getenv("API_PASSWORD") or _parse_define(_secrets_content, "API_PASSWORD")
+_DB_PASSWORD  = os.getenv("DB_PASSWORD")  or _parse_define(_secrets_content, "DB_PASSWORD")
 
 # -------------------------
 # Database
@@ -42,7 +41,7 @@ def get_db_conn():
         port=int(os.getenv("DB_PORT", 5432)),
         dbname=os.getenv("DB_NAME", "sensor_db"),
         user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "postgres"),
+        password=_DB_PASSWORD,
     )
 
 def init_db():

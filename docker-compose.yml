@@ -19,12 +19,12 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
-      API_PASSWORD: ${API_PASSWORD:?API_PASSWORD is required}
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-sensor_db}
       DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - ./secrets.h:/secrets.h:ro
     depends_on:
       db:
         condition: service_healthy

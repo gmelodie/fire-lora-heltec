@@ -40,7 +40,11 @@ arduino-cli lib install "ESP8266 and ESP32 OLED driver for SSD1306 displays"
 
 ### 3. Configure secrets
 
-Copy `gateway/secrets.example.h` to `gateway/secrets.h` and fill in your values:
+All secrets live in a single file at the repo root. Copy the example and fill in your values:
+
+```bash
+cp secrets.example.h secrets.h
+```
 
 ```c
 // ── Regular WPA2 (home / office router) ───────────────────────────────────
@@ -55,8 +59,11 @@ Copy `gateway/secrets.example.h` to `gateway/secrets.h` and fill in your values:
 // #define EAP_PASSWORD "your_eap_password"
 
 // ── API ────────────────────────────────────────────────────────────────────
-#define API_PASSWORD "your_password"   // must match API_PASSWORD in .env
+#define API_PASSWORD "your_api_password"
 #define API_URL "https://192.168.x.x:8443"
+
+// ── Database ───────────────────────────────────────────────────────────────
+#define DB_PASSWORD "your_db_password"
 
 /* Root certificate for the API server (PEM format) */
 static const char *API_CERT PROGMEM = R"EOF(
@@ -65,6 +72,8 @@ static const char *API_CERT PROGMEM = R"EOF(
 -----END CERTIFICATE-----
 )EOF";
 ```
+
+The firmware, API server, and startup script all read from this one file.
 
 ### 4. Compile and upload
 
@@ -96,28 +105,12 @@ The API and database run as Docker containers managed by `docker compose`.
 
 Install [Docker Engine](https://docs.docker.com/engine/install/) with the Compose plugin.
 
-### 2. Create the environment file
+### 2. Build and start
+
+Ensure `secrets.h` exists at the repo root (see Firmware Setup step 3), then:
 
 ```bash
-cp .env.example .env
-```
-
-Edit `.env` and set the two required values:
-
-```
-API_PASSWORD=your-api-password-here   # same value as in secrets.h
-DB_PASSWORD=your-db-password-here
-
-# Optional — defaults shown
-# DB_NAME=sensor_db
-# DB_USER=postgres
-# API_PORT=8000
-```
-
-### 3. Build and start
-
-```bash
-docker compose up -d --build
+./start.sh
 ```
 
 The dashboard is available at `http://localhost:8000` (or replace `localhost` with the server's IP).

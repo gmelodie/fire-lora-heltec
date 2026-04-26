@@ -1,7 +1,5 @@
 secrets.h
-.env
-api/__pycache__/
 *.db
 *.pem
-api/venv/
-scripts/venv
+venv/
+__pycache__/
