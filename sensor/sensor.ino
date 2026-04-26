@@ -324,6 +324,12 @@ void setup() {
   display.display();
   delay(1500);
 
+  if (batteryAvailable) {
+    int bat = readBattery();
+    showMessage("Battery", String(bat) + "%");
+    delay(1500);
+  }
+
   initRadio();
   radio.startReceive();
 
