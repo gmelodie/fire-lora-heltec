@@ -6,6 +6,7 @@ import os
 import sys
 import warnings
 from datetime import datetime, timezone
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import requests
@@ -119,7 +120,8 @@ def main():
 
         ax.set_ylabel(f"{metric}\n({UNITS[metric]})", fontsize=9)
         ax.grid(True, alpha=0.3)
-        if all_readings:
+        handles, _ = ax.get_legend_handles_labels()
+        if handles:
             ax.legend(fontsize=8)
 
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
@@ -129,6 +131,10 @@ def main():
     if args.out:
         plt.savefig(args.out, dpi=150)
         print(f"Saved to {args.out}")
+    elif matplotlib.get_backend().lower() == "agg":
+        out = "plot.png"
+        plt.savefig(out, dpi=150)
+        print(f"No display available — saved to {out}")
     else:
         plt.show()
 
