@@ -39,7 +39,7 @@ int retryCount = 0;
 bool bmeFound = false;
 
 #ifndef BATTERY_AVAILABLE
-#define BATTERY_AVAILABLE 0
+#define BATTERY_AVAILABLE 1
 #endif
 
 bool batteryAvailable = (BATTERY_AVAILABLE == 1);
