@@ -5,9 +5,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#ifdef USE_EAP
-#include "esp_wpa2.h"
-#endif
 #include <SSD1306Wire.h>
 #include "secrets.h"
 #include "settings.h"
@@ -65,11 +62,7 @@ bool connectWiFi()
   WiFi.mode(WIFI_STA);
 
 #ifdef USE_EAP
-  esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY));
-  esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
-  esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
-  esp_wifi_sta_wpa2_ent_enable();
-  WiFi.begin(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
 #else
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 #endif
