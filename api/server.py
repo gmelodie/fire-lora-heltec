@@ -55,16 +55,21 @@ def init_db():
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS readings (
-            id          SERIAL PRIMARY KEY,
-            sensor_id   TEXT,
-            temperature REAL,
-            humidity    REAL,
-            pressure    REAL,
-            battery     INTEGER,
-            counter     INTEGER,
-            rssi        INTEGER,
-            timestamp   INTEGER
+            id              SERIAL PRIMARY KEY,
+            sensor_id       TEXT,
+            temperature     REAL,
+            humidity        REAL,
+            pressure        REAL,
+            battery         INTEGER,
+            camera_battery  INTEGER,
+            counter         INTEGER,
+            rssi            INTEGER,
+            timestamp       INTEGER
         )
+    """)
+    cur.execute("""
+        ALTER TABLE readings
+        ADD COLUMN IF NOT EXISTS camera_battery INTEGER
     """)
     conn.commit()
     conn.close()
@@ -81,17 +86,19 @@ def insert_reading(data):
             humidity,
             pressure,
             battery,
+            camera_battery,
             counter,
             rssi,
             timestamp
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (
         data["sensor_id"],
-        float(data["temperature"]) if data["temperature"] is not None else None,
-        float(data["humidity"])    if data["humidity"]    is not None else None,
-        float(data["pressure"])    if data["pressure"]    is not None else None,
-        int(data["battery"])       if data["battery"]     is not None else None,
+        float(data["temperature"])     if data["temperature"]     is not None else None,
+        float(data["humidity"])        if data["humidity"]        is not None else None,
+        float(data["pressure"])        if data["pressure"]        is not None else None,
+        int(data["battery"])           if data["battery"]         is not None else None,
+        int(data["camera_battery"])    if data.get("camera_battery") is not None else None,
         int(data["counter"]),
         int(data["rssi"]),
         int(time.time())
@@ -120,7 +127,7 @@ async def receive_sensor(req: Request):
     except:
         raise HTTPException(400, "Invalid JSON")
 
-    required = ["sensor_id", "temperature", "humidity", "pressure", "battery", "counter", "rssi"]
+    required = ["sensor_id", "temperature", "humidity", "pressure", "battery", "camera_battery", "counter", "rssi"]
     for f in required:
         if f not in payload:
             raise HTTPException(400, f"Missing {f}")
@@ -150,7 +157,7 @@ async def get_latest_readings(req: Request):
     cur.execute("""
         SELECT DISTINCT ON (sensor_id)
             id, sensor_id, temperature, humidity, pressure,
-            battery, counter, rssi, timestamp
+            battery, camera_battery, counter, rssi, timestamp
         FROM readings
         ORDER BY sensor_id, timestamp DESC
     """)
@@ -188,7 +195,7 @@ async def get_readings(
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute(f"""
         SELECT id, sensor_id, temperature, humidity, pressure,
-               battery, counter, rssi, timestamp
+               battery, camera_battery, counter, rssi, timestamp
         FROM readings
         {where}
         ORDER BY timestamp ASC

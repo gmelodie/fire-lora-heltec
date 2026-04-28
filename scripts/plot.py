@@ -2,24 +2,39 @@
 """Query the fire-sensor API and plot time-series graphs."""
 
 import argparse
+import csv
 import os
 import sys
 import warnings
 from datetime import datetime, timezone
+from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from matplotlib.backends.backend_pdf import PdfPages
 import requests
 import urllib3  # noqa: F401 (imported for disable_warnings)
 
-METRICS = ["temperature", "humidity", "pressure", "battery", "rssi"]
+METRICS = ["temperature", "humidity", "pressure", "battery", "camera_battery", "rssi"]
+LABELS = {
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "pressure": "Pressure",
+    "battery": "Heltec Battery",
+    "camera_battery": "Camera Battery",
+    "rssi": "RSSI",
+}
 UNITS = {
     "temperature": "°C",
     "humidity": "%",
     "pressure": "hPa",
     "battery": "%",
+    "camera_battery": "%",
     "rssi": "dBm",
 }
+
+CSV_FIELDS = ["timestamp", "datetime", "sensor_id", "temperature", "humidity",
+              "pressure", "battery", "camera_battery", "rssi"]
 
 
 def parse_ts(s):
@@ -58,6 +73,52 @@ def fetch_readings(host, password, sensor_id, from_ts, to_ts, limit, verify):
     return api_get(host, password, "/readings", params, verify=verify)
 
 
+def write_csv(path, all_readings):
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for sid, rows in all_readings.items():
+            for r in rows:
+                row = dict(r)
+                row["datetime"] = datetime.fromtimestamp(r["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+                row.setdefault("camera_battery", None)
+                writer.writerow(row)
+    print(f"CSV saved to {path}")
+
+
+def build_figure(all_readings, metrics):
+    fig, axes = plt.subplots(len(metrics), 1, figsize=(12, 3 * len(metrics)), sharex=True)
+    if len(metrics) == 1:
+        axes = [axes]
+
+    fig.suptitle("Sensor readings", fontsize=13)
+
+    for ax, metric in zip(axes, metrics):
+        has_data = False
+        for sid, rows in all_readings.items():
+            times = []
+            values = []
+            for r in rows:
+                if r.get(metric) is not None:
+                    times.append(datetime.fromtimestamp(r["timestamp"]))
+                    values.append(r[metric])
+            if times:
+                ax.plot(times, values, marker=".", markersize=3, linewidth=1, label=f"Sensor {sid}")
+                has_data = True
+
+        label = LABELS.get(metric, metric)
+        unit = UNITS.get(metric, "")
+        ax.set_ylabel(f"{label}\n({unit})", fontsize=9)
+        ax.grid(True, alpha=0.3)
+        if has_data:
+            ax.legend(fontsize=8)
+
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
+    fig.autofmt_xdate()
+    plt.tight_layout()
+    return fig
+
+
 def main():
     parser = argparse.ArgumentParser(description="Plot sensor readings from the API")
     parser.add_argument("--host", default=os.getenv("API_URL"), help="API base URL (or set API_URL)")
@@ -68,7 +129,7 @@ def main():
     parser.add_argument("--to", dest="to_ts", type=parse_ts, metavar="DATE", help="End date (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
     parser.add_argument("--limit", type=int, default=2000, help="Max readings per sensor (default: 2000)")
     parser.add_argument("--no-verify", dest="no_verify", action="store_true", help="Skip SSL certificate verification (for self-signed certs)")
-    parser.add_argument("--out", metavar="FILE", help="Save to file instead of showing interactively")
+    parser.add_argument("--out", metavar="FILE", help="Output base name (produces <name>.pdf and <name>.csv)")
     args = parser.parse_args()
 
     if not args.host:
@@ -101,40 +162,22 @@ def main():
     if not all_readings:
         sys.exit("No readings returned for the given filters")
 
-    fig, axes = plt.subplots(len(metrics), 1, figsize=(12, 3 * len(metrics)), sharex=True)
-    if len(metrics) == 1:
-        axes = [axes]
-
-    fig.suptitle("Sensor readings", fontsize=13)
-
-    for ax, metric in zip(axes, metrics):
-        for sid, rows in all_readings.items():
-            times = []
-            values = []
-            for r in rows:
-                if r.get(metric) is not None:
-                    times.append(datetime.fromtimestamp(r["timestamp"]))
-                    values.append(r[metric])
-            if times:
-                ax.plot(times, values, marker=".", markersize=3, linewidth=1, label=f"Sensor {sid}")
-
-        ax.set_ylabel(f"{metric}\n({UNITS[metric]})", fontsize=9)
-        ax.grid(True, alpha=0.3)
-        handles, _ = ax.get_legend_handles_labels()
-        if handles:
-            ax.legend(fontsize=8)
-
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
-    fig.autofmt_xdate()
-    plt.tight_layout()
-
     if args.out:
-        plt.savefig(args.out, dpi=150)
-        print(f"Saved to {args.out}")
+        base = str(Path(args.out).with_suffix(""))
     elif matplotlib.get_backend().lower() == "agg":
-        out = "plot.png"
-        plt.savefig(out, dpi=150)
-        print(f"No display available — saved to {out}")
+        base = "plot"
+    else:
+        base = None
+
+    fig = build_figure(all_readings, metrics)
+
+    if base:
+        pdf_path = base + ".pdf"
+        csv_path = base + ".csv"
+        with PdfPages(pdf_path) as pdf:
+            pdf.savefig(fig)
+        print(f"PDF saved to {pdf_path}")
+        write_csv(csv_path, all_readings)
     else:
         plt.show()
 

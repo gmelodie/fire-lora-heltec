@@ -38,11 +38,11 @@ int retryCount = 0;
 
 bool bmeFound = false;
 
-#ifndef BATTERY_AVAILABLE
-#define BATTERY_AVAILABLE 1
+#ifndef CAMERA_BATTERY_AVAILABLE
+#define CAMERA_BATTERY_AVAILABLE 0
 #endif
 
-bool batteryAvailable = (BATTERY_AVAILABLE == 1);
+bool cameraBatteryAvailable = (CAMERA_BATTERY_AVAILABLE == 1);
 
 
 /* =========================================================
@@ -75,10 +75,11 @@ void showMessage(String l1, String l2 = "") {
    Battery
    ========================================================= */
 
-int readBattery() {
+// Camera battery: empirical thresholds for external 30k/10k divider, ADC_11db
+int readAdcBattery(uint8_t pin) {
   int sum = 0;
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
-    sum += analogRead(BATTERY_PIN);
+    sum += analogRead(pin);
     delay(5);
   }
   int raw = sum / NUM_ADC_SAMPLES;
@@ -88,6 +89,38 @@ int readBattery() {
   if (raw >= BAT_50) return 50;
   if (raw >= BAT_25) return 25;
   if (raw >= BAT_10) return 10;
+  return 0;
+}
+
+int readCameraBattery() { return readAdcBattery(CAMERA_BATTERY_PIN); }
+
+// Heltec internal battery: GPIO37 HIGH enables the 390k/100k divider.
+// GPIO1 attenuation must be explicitly set to ADC_11db in setup(); otherwise
+// ESP32-S3 silicon may default to a lower range and read ~10x low.
+int readBattery() {
+  static const uint16_t OCV[] = {4190, 4050, 3990, 3890, 3800, 3720, 3630, 3530, 3420, 3300, 3100};
+  const int NUM_OCV = 11;
+
+  // The ESP32 doesn't have a particularly good ADC, so we calculate an average
+  int pinMv = 0;
+  for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
+    pinMv += analogReadMilliVolts(BATTERY_PIN);
+    delay(10);
+  }
+  pinMv /= NUM_ADC_SAMPLES;
+
+  // 390k/100k divider → ratio (390+100)/100 = 4.9; ADC_11db attenuation must be set explicitly
+  uint32_t mv = (uint32_t)(pinMv * 4.9f);
+  Serial.printf("Heltec bat pin_mv=%d bat_mv=%lu\n", pinMv, mv);
+
+  if (mv >= OCV[0]) return 100;
+  if (mv <= OCV[NUM_OCV - 1]) return 0;
+
+  for (int i = 0; i < NUM_OCV - 1; i++) {
+    if (mv >= OCV[i + 1]) {
+      return (10 - i - 1) * 10 + (mv - OCV[i + 1]) * 10 / (OCV[i] - OCV[i + 1]);
+    }
+  }
   return 0;
 }
 
@@ -180,7 +213,7 @@ void sendSensorData() {
   String temperature = "nil";
   String humidity = "nil";
   String pressure = "nil";
-  String battery = "nil";
+  String cameraBattery = "nil";
 
   if (bmeFound) {
     bme.takeForcedMeasurement();
@@ -189,8 +222,10 @@ void sendSensorData() {
     pressure = String(bme.readPressure() / 100.0F, 2);
   }
 
-  if (batteryAvailable) {
-    battery = String(readBattery());
+  String heltecBattery = String(readBattery());
+
+  if (cameraBatteryAvailable) {
+    cameraBattery = String(readCameraBattery());
   }
 
   String msg =
@@ -199,7 +234,8 @@ void sendSensorData() {
     temperature + "|" +
     humidity + "|" +
     pressure + "|" +
-    battery + "|" +
+    heltecBattery + "|" +
+    cameraBattery + "|" +
     String(msgCounter);
 
   waitingAck = true;
@@ -293,9 +329,18 @@ void setup() {
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  pinMode(BATTERY_PIN, INPUT);
   analogReadResolution(12);
+
+  // HIGH enables the 390k/100k voltage divider (confirmed on Heltec V3)
+  pinMode(ADC_CTRL_PIN, OUTPUT);
+  digitalWrite(ADC_CTRL_PIN, HIGH);
+  // Must be set explicitly; default attenuation varies between ESP32-S3 silicon revisions
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+
+  if (cameraBatteryAvailable) {
+    pinMode(CAMERA_BATTERY_PIN, INPUT);
+    analogSetPinAttenuation(CAMERA_BATTERY_PIN, ADC_11db);
+  }
 
   loadSensorID();
   delay(2000);
@@ -321,9 +366,11 @@ void setup() {
   display.display();
   delay(1500);
 
-  if (batteryAvailable) {
-    int bat = readBattery();
-    showMessage("Battery", String(bat) + "%");
+  showMessage("Heltec Batt", String(readBattery()) + "%");
+  delay(1500);
+
+  if (cameraBatteryAvailable) {
+    showMessage("Cam Batt", String(readCameraBattery()) + "%");
     delay(1500);
   }
 

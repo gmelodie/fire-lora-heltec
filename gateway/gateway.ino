@@ -242,7 +242,8 @@ String handleData(String msg, int16_t rssi)
   int p4 = msg.indexOf('|', p3 + 1);
   int p5 = msg.indexOf('|', p4 + 1);
   int p6 = msg.indexOf('|', p5 + 1);
-  if (p1 == -1 || p2 == -1 || p3 == -1 || p4 == -1 || p5 == -1 || p6 == -1)
+  int p7 = msg.indexOf('|', p6 + 1);
+  if (p1 == -1 || p2 == -1 || p3 == -1 || p4 == -1 || p5 == -1 || p6 == -1 || p7 == -1)
     return "";
 
   uint8_t id = msg.substring(p1 + 1, p2).toInt();
@@ -250,7 +251,8 @@ String handleData(String msg, int16_t rssi)
   String hum = msg.substring(p3 + 1, p4);
   String pres = msg.substring(p4 + 1, p5);
   String batt = msg.substring(p5 + 1, p6);
-  uint32_t counter = msg.substring(p6 + 1).toInt();
+  String camBatt = msg.substring(p6 + 1, p7);
+  uint32_t counter = msg.substring(p7 + 1).toInt();
 
   sendAck(id, counter);
 
@@ -264,6 +266,7 @@ String handleData(String msg, int16_t rssi)
          "\"humidity\":" + jsonVal(hum) + ","
          "\"pressure\":" + jsonVal(pres) + ","
          "\"battery\":" + jsonVal(batt) + ","
+         "\"camera_battery\":" + jsonVal(camBatt) + ","
          "\"counter\":" + String(counter) + ","
          "\"rssi\":" + String(rssi) + "}";
 }

@@ -28,6 +28,8 @@
    ========================================================= */
 
 #define BATTERY_PIN 1
+#define ADC_CTRL_PIN 37
+#define CAMERA_BATTERY_PIN 2
 #define ADC_REF 3.3
 #define ADC_RES 4095.0
 #define VOLTAGE_DIVIDER_RATIO 2.0
@@ -71,7 +73,7 @@
    SAMPLES
    ========================================================= */
 
-#define NUM_ADC_SAMPLES 5
+#define NUM_ADC_SAMPLES 10
 
 /* =========================================================
    I2C
