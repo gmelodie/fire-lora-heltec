@@ -4,3 +4,5 @@ secrets.h
 *.pem
 venv/
 __pycache__/
+*.csv
+*.pdf

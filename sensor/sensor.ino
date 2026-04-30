@@ -21,7 +21,7 @@ Adafruit_BME280 bme;
    ========================================================= */
 
 uint8_t sensorID = 1;
-uint32_t msgCounter = 0;
+RTC_DATA_ATTR uint32_t msgCounter = 0;
 
 bool gatewayFound = false;
 bool waitingAck = false;
@@ -101,6 +101,9 @@ int readBattery() {
   static const uint16_t OCV[] = {4190, 4050, 3990, 3890, 3800, 3720, 3630, 3530, 3420, 3300, 3100};
   const int NUM_OCV = 11;
 
+  // ADC attenuation is lost after light sleep on ESP32-S3, so re-apply it here
+  analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+
   // The ESP32 doesn't have a particularly good ADC, so we calculate an average
   int pinMv = 0;
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
@@ -176,13 +179,11 @@ bool initRadio() {
    Sleep
    ========================================================= */
 
-void lightSleep(uint32_t ms) {
+void deepSleep(uint32_t ms) {
   display.displayOff();
   radio.sleep();
   esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
-  esp_light_sleep_start();
-  // resumed after wakeup — display stays off until showMessage() is called
-  initRadio();
+  esp_deep_sleep_start();
 }
 
 /* =========================================================
@@ -404,9 +405,7 @@ void loop() {
     return;
   }
 
-  if (!waitingAck &&
-      (millis() - lastTx >= TX_INTERVAL || firstTx)) {
-
+  if (!waitingAck && firstTx) {
     firstTx = false;
     lastTx = millis();
     sendSensorData();
@@ -425,14 +424,7 @@ void loop() {
   }
 
   if (gatewayFound && !waitingAck && !firstTx) {
-    unsigned long elapsed = millis() - lastTx;
-    if (elapsed < TX_INTERVAL) {
-      unsigned long remaining = TX_INTERVAL - elapsed;
-      if (remaining > 5000) {
-        Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
-        lightSleep(remaining - 2000);
-        wakeTime = millis();
-      }
-    }
+    Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
+    deepSleep(TX_INTERVAL);
   }
 }
