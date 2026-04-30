@@ -134,10 +134,14 @@ int readBattery() {
 
 void loadSensorID() {
   EEPROM.begin(EEPROM_SIZE);
+#ifdef SENSOR_ID
+  sensorID = SENSOR_ID;
+  saveSensorID();
+#else
   sensorID = EEPROM.read(SENSOR_ID_ADDR);
-
   if (sensorID == 0xFF || sensorID == 0)
     sensorID = 1;
+#endif
 }
 
 void saveSensorID() {
@@ -407,7 +411,7 @@ void loop() {
       uint8_t step = min(pingBackoffStep, (uint8_t)MAX_BACKOFF_STEP);
       uint32_t backoffMs = min(BACKOFF_BASE_MS << step, BACKOFF_MAX_MS);
       pingBackoffStep = step + 1;
-      Serial.printf("Gateway not found, sleeping %lu ms (step %u)\n", backoffMs, step);
+      Serial.printf("Gateway not found, sleeping %lu s (step %u)\n", backoffMs / 1000, step);
       deepSleep(backoffMs);
     }
     return;
@@ -433,7 +437,7 @@ void loop() {
   }
 
   if (gatewayFound && !waitingAck && !firstTx) {
-    Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
+    Serial.printf("AWAKE_S:%lu\n", (millis() - wakeTime) / 1000);
     deepSleep(TX_INTERVAL);
   }
 }
