@@ -30,7 +30,7 @@ async function apiFetch(path) {
   return res.json();
 }
 
-// ---- Relative time ----
+// ---- Time helpers ----
 
 function relativeTime(unixSec) {
   const diffSec = Math.floor(Date.now() / 1000) - unixSec;
@@ -38,6 +38,21 @@ function relativeTime(unixSec) {
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
   return `${Math.floor(diffSec / 86400)}d ago`;
+}
+
+function toDatetimeLocal(unixSec) {
+  const d = new Date(unixSec * 1000);
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0') + 'T' +
+    String(d.getHours()).padStart(2, '0') + ':' +
+    String(d.getMinutes()).padStart(2, '0');
+}
+
+function formatTick(unixSec) {
+  const d = new Date(unixSec * 1000);
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+         d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 // ---- Sensor cards ----
@@ -55,12 +70,13 @@ function buildSensorCard(r) {
   card.appendChild(header);
 
   const metrics = [
-    ['Temperature', r.temperature != null ? `${r.temperature.toFixed(1)} °C` : '—'],
-    ['Humidity',    r.humidity    != null ? `${r.humidity.toFixed(1)} %`    : '—'],
-    ['Pressure',    r.pressure    != null ? `${r.pressure.toFixed(1)} hPa`  : '—'],
-    ['Battery',     r.battery     != null ? `${r.battery} %`                : '—'],
-    ['RSSI',        r.rssi        != null ? `${r.rssi} dBm`                 : '—'],
-    ['Counter',     r.counter     != null ? `#${r.counter}`                 : '—'],
+    ['Temperature',   r.temperature    != null ? `${r.temperature.toFixed(1)} °C` : '—'],
+    ['Humidity',      r.humidity       != null ? `${r.humidity.toFixed(1)} %`     : '—'],
+    ['Pressure',      r.pressure       != null ? `${r.pressure.toFixed(1)} hPa`   : '—'],
+    ['Battery',       r.battery        != null ? `${r.battery} %`                 : '—'],
+    ['Camera Batt',   r.camera_battery != null ? `${r.camera_battery} %`          : '—'],
+    ['RSSI',          r.rssi           != null ? `${r.rssi} dBm`                  : '—'],
+    ['Counter',       r.counter        != null ? `#${r.counter}`                  : '—'],
   ];
 
   for (const [label, value] of metrics) {
@@ -90,18 +106,179 @@ async function refreshCurrentState() {
   }
 }
 
+// ---- Live graphs ----
+
+const CHART_COLORS = [
+  '#f97316', '#3b82f6', '#22c55e', '#a855f7',
+  '#eab308', '#ec4899', '#14b8a6', '#f43f5e',
+];
+
+const METRICS = [
+  { key: 'temperature',    label: 'Temperature (°C)' },
+  { key: 'humidity',       label: 'Humidity (%)'      },
+  { key: 'pressure',       label: 'Pressure (hPa)'    },
+  { key: 'battery',        label: 'Battery (%)'       },
+  { key: 'camera_battery', label: 'Camera Battery (%)'},
+  { key: 'rssi',           label: 'RSSI (dBm)'        },
+];
+
+const PRESETS = { '1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800 };
+
+let activePreset = '24h';
+const chartInstances = {};
+
+function setActivePreset(key) {
+  activePreset = key;
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.preset === key);
+  });
+  const customRange = document.getElementById('custom-range');
+  if (key === 'custom') {
+    customRange.classList.remove('hidden');
+  } else {
+    customRange.classList.add('hidden');
+    const now = Math.floor(Date.now() / 1000);
+    document.getElementById('from-dt').value = toDatetimeLocal(now - PRESETS[key]);
+    document.getElementById('to-dt').value   = toDatetimeLocal(now);
+  }
+}
+
+function renderAllCharts(rows) {
+  const grid = document.getElementById('charts-grid');
+  grid.innerHTML = '';
+
+  for (const key of Object.keys(chartInstances)) {
+    chartInstances[key].destroy();
+    delete chartInstances[key];
+  }
+
+  const groups = {};
+  for (const r of rows) {
+    (groups[r.sensor_id] = groups[r.sensor_id] || []).push(r);
+  }
+  const sensorIds = Object.keys(groups).sort();
+
+  for (const { key, label } of METRICS) {
+    const tile = document.createElement('div');
+    tile.className = 'chart-tile';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'chart-tile-title';
+    titleEl.textContent = label;
+    tile.appendChild(titleEl);
+
+    const canvas = document.createElement('canvas');
+    tile.appendChild(canvas);
+    grid.appendChild(tile);
+
+    const datasets = sensorIds.map((id, i) => {
+      const pts = groups[id];
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      return {
+        label: `Sensor ${id}`,
+        data: pts.map(r => ({ x: r.timestamp * 1000, y: r[key] })),
+        borderColor: color,
+        backgroundColor: color + '18',
+        borderWidth: 1.5,
+        tension: 0.2,
+        pointRadius: pts.length > 100 ? 0 : 2,
+        pointHoverRadius: 4,
+      };
+    });
+
+    chartInstances[key] = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        plugins: {
+          legend: {
+            display: sensorIds.length > 1,
+            labels: { color: '#e6edf3', boxWidth: 10, font: { size: 10 } },
+          },
+          tooltip: {
+            backgroundColor: '#161b22',
+            borderColor: '#30363d',
+            borderWidth: 1,
+            titleColor: '#e6edf3',
+            bodyColor: '#8b949e',
+            callbacks: { title: items => formatTick(items[0].parsed.x / 1000) },
+          },
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            ticks: {
+              color: '#8b949e',
+              maxTicksLimit: 6,
+              maxRotation: 0,
+              font: { size: 10 },
+              callback: val => formatTick(val / 1000),
+            },
+            grid: { color: '#30363d' },
+          },
+          y: {
+            ticks: { color: '#8b949e', font: { size: 10 } },
+            grid: { color: '#30363d' },
+          },
+        },
+      },
+    });
+  }
+}
+
+async function fetchAndRenderCharts() {
+  const sensorId = document.getElementById('sensor-select').value;
+  const fromDt   = document.getElementById('from-dt').value;
+  const toDt     = document.getElementById('to-dt').value;
+
+  const grid = document.getElementById('charts-grid');
+  grid.innerHTML = '<p class="placeholder" style="padding:1rem">Loading…</p>';
+
+  const params = new URLSearchParams({ limit: 2000 });
+  if (sensorId) params.set('sensor_id', sensorId);
+  if (fromDt)   params.set('from_ts', Math.floor(new Date(fromDt).getTime() / 1000));
+  if (toDt)     params.set('to_ts',   Math.floor(new Date(toDt).getTime()   / 1000));
+
+  let rows;
+  try {
+    rows = await apiFetch(`/readings?${params}`);
+  } catch (err) {
+    if (err.message !== 'Unauthorized') {
+      grid.innerHTML = '<p class="placeholder" style="padding:1rem">Failed to load data.</p>';
+    }
+    return;
+  }
+
+  if (rows.length === 0) {
+    grid.innerHTML = '<p class="placeholder" style="padding:1rem">No data in the selected range.</p>';
+    return;
+  }
+
+  renderAllCharts(rows);
+}
+
 // ---- Auto-refresh ----
 
 let refreshCountdown = 30;
 
 function startAutoRefresh() {
   refreshCurrentState();
+  fetchAndRenderCharts();
   setInterval(() => {
     refreshCountdown--;
     document.getElementById('refresh-countdown').textContent = refreshCountdown;
     if (refreshCountdown <= 0) {
       refreshCountdown = 30;
+      if (activePreset !== 'custom') {
+        const now = Math.floor(Date.now() / 1000);
+        document.getElementById('from-dt').value = toDatetimeLocal(now - PRESETS[activePreset]);
+        document.getElementById('to-dt').value   = toDatetimeLocal(now);
+      }
       refreshCurrentState();
+      fetchAndRenderCharts();
     }
   }, 1000);
 }
@@ -120,119 +297,42 @@ async function populateSensorDropdown() {
   } catch (_) { /* handled by apiFetch */ }
 }
 
-// ---- History chart ----
+// ---- Controls wiring ----
 
-let chartInstance = null;
-
-const metricLabels = {
-  temperature: 'Temperature (°C)',
-  humidity:    'Humidity (%)',
-  pressure:    'Pressure (hPa)',
-  battery:     'Battery (%)',
-  rssi:        'RSSI (dBm)',
-};
-
-async function searchHistory() {
-  const sensorId = document.getElementById('sensor-select').value;
-  const metric   = document.getElementById('metric-select').value;
-  const fromDt   = document.getElementById('from-dt').value;
-  const toDt     = document.getElementById('to-dt').value;
-
-  if (!sensorId) return;
-
-  const params = new URLSearchParams({ sensor_id: sensorId, limit: 500 });
-  if (fromDt) params.set('from_ts', Math.floor(new Date(fromDt).getTime() / 1000));
-  if (toDt)   params.set('to_ts',   Math.floor(new Date(toDt).getTime()   / 1000));
-
-  const placeholder = document.getElementById('chart-placeholder');
-  placeholder.textContent = 'Loading…';
-  placeholder.classList.remove('hidden');
-
-  let rows;
-  try {
-    rows = await apiFetch(`/readings?${params}`);
-  } catch (err) {
-    if (err.message !== 'Unauthorized') {
-      placeholder.textContent = 'Failed to load data.';
-    }
-    return;
-  }
-
-  placeholder.classList.add('hidden');
-
-  if (rows.length === 0) {
-    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-    placeholder.textContent = 'No data found for the selected range.';
-    placeholder.classList.remove('hidden');
-    return;
-  }
-
-  const labels = rows.map(r => {
-    const d = new Date(r.timestamp * 1000);
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-           d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  });
-  const values = rows.map(r => r[metric]);
-
-  if (chartInstance) chartInstance.destroy();
-
-  const ctx = document.getElementById('history-chart').getContext('2d');
-  chartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: metricLabels[metric] || metric,
-        data: values,
-        borderColor: '#f97316',
-        backgroundColor: 'rgba(249,115,22,0.08)',
-        borderWidth: 2,
-        tension: 0.2,
-        pointRadius: rows.length > 200 ? 0 : 3,
-        pointHoverRadius: 4,
-      }]
-    },
-    options: {
-      responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { labels: { color: '#e6edf3' } },
-        tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1 },
-      },
-      scales: {
-        x: {
-          ticks: { color: '#8b949e', maxTicksLimit: 10, maxRotation: 0 },
-          grid:  { color: '#30363d' },
-        },
-        y: {
-          ticks: { color: '#8b949e' },
-          grid:  { color: '#30363d' },
-        },
-      },
-    },
+function wireControls() {
+  document.getElementById('sensor-select').addEventListener('change', fetchAndRenderCharts);
+  document.getElementById('apply-custom-btn').addEventListener('click', fetchAndRenderCharts);
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setActivePreset(btn.dataset.preset);
+      if (btn.dataset.preset !== 'custom') fetchAndRenderCharts();
+    });
   });
 }
 
-// ---- Login flow ----
+// ---- Init ----
+
+async function initDashboard() {
+  await populateSensorDropdown();
+  setActivePreset('24h');
+  wireControls();
+  startAutoRefresh();
+}
 
 async function handleLogin() {
   const pw = document.getElementById('login-password').value.trim();
   if (!pw) return;
-
   Auth.setPassword(pw);
   try {
     await apiFetch('/readings/latest');
     hideLoginOverlay();
-    await Promise.all([populateSensorDropdown(), startAutoRefresh()]);
-    document.getElementById('search-btn').addEventListener('click', searchHistory);
+    await initDashboard();
   } catch (err) {
     if (err.message === 'Unauthorized') {
       document.getElementById('login-error').classList.remove('hidden');
     }
   }
 }
-
-// ---- Init ----
 
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('login-btn').addEventListener('click', handleLogin);
@@ -246,6 +346,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   hideLoginOverlay();
-  await Promise.all([populateSensorDropdown(), startAutoRefresh()]);
-  document.getElementById('search-btn').addEventListener('click', searchHistory);
+  await initDashboard();
 });

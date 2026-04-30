@@ -159,15 +159,22 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
   text-align: right;
 }
 
-/* ---- Search bar ---- */
-.search-bar {
+/* ---- Chart controls ---- */
+.chart-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.controls-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: flex-end;
-  margin-bottom: 1rem;
 }
 
+/* ---- Search groups ---- */
 .search-group {
   display: flex;
   flex-direction: column;
@@ -198,6 +205,51 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
   border-color: var(--accent);
 }
 
+/* ---- Preset buttons ---- */
+.preset-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.preset-group > label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.preset-btns {
+  display: flex;
+}
+
+.preset-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-right-width: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0;
+  transition: background 0.12s, color 0.12s;
+}
+
+.preset-btn:last-child { border-right-width: 1px; }
+.preset-btn:first-child { border-radius: 4px 0 0 4px; }
+.preset-btn:last-child  { border-radius: 0 4px 4px 0; }
+
+.preset-btn:hover { background: var(--surface); color: var(--text); opacity: 1; }
+
+.preset-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  opacity: 1;
+}
+
 /* ---- Buttons ---- */
 button {
   background: var(--accent);
@@ -216,20 +268,40 @@ button {
 button:hover { opacity: 0.85; }
 button:active { opacity: 0.7; }
 
-/* ---- Chart ---- */
-.chart-container {
+/* ---- Charts grid ---- */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 720px) {
+  .charts-grid { grid-template-columns: 1fr; }
+}
+
+.chart-tile {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 1rem;
-  position: relative;
-  min-height: 300px;
+  padding: 0.75rem 1rem 1rem;
+  height: 260px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
 }
 
-#history-chart { width: 100% !important; }
+.chart-tile-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.chart-tile canvas {
+  flex: 1;
+  min-height: 0;
+}
 
 /* ---- Misc ---- */
 .placeholder { color: var(--muted); font-size: 0.85rem; }
