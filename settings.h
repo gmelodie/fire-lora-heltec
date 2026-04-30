@@ -57,6 +57,12 @@
 #define SCREEN_TIMEOUT 5000
 #define MAX_SENSORS 25
 
+#define PING_INTERVAL_MS    2000UL
+#define GATEWAY_SEARCH_MS   10000UL  // give up and sleep if no pong within this window
+#define BACKOFF_BASE_MS     30000UL  // first backoff sleep: 30s
+#define BACKOFF_MAX_MS      300000UL // cap at 5 min
+#define MAX_BACKOFF_STEP    8        // prevents bit-shift overflow (30000 << 8 still fits uint32_t)
+
 /* =========================================================
    Battery to ADC VALUES
    ========================================================= */

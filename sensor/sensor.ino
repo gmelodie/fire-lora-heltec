@@ -22,6 +22,7 @@ Adafruit_BME280 bme;
 
 uint8_t sensorID = 1;
 RTC_DATA_ATTR uint32_t msgCounter = 0;
+RTC_DATA_ATTR uint8_t pingBackoffStep = 0;
 
 bool gatewayFound = false;
 bool waitingAck = false;
@@ -398,12 +399,20 @@ void loop() {
   }
 
   if (!gatewayFound) {
-    if (millis() - lastTx > 2000) {
+    if (millis() - lastTx >= PING_INTERVAL_MS) {
       sendPing();
       lastTx = millis();
     }
+    if (millis() > GATEWAY_SEARCH_MS) {
+      uint8_t step = min(pingBackoffStep, (uint8_t)MAX_BACKOFF_STEP);
+      uint32_t backoffMs = min(BACKOFF_BASE_MS << step, BACKOFF_MAX_MS);
+      pingBackoffStep = step + 1;
+      Serial.printf("Gateway not found, sleeping %lu ms (step %u)\n", backoffMs, step);
+      deepSleep(backoffMs);
+    }
     return;
   }
+  pingBackoffStep = 0;
 
   if (!waitingAck && firstTx) {
     firstTx = false;
