@@ -24,7 +24,7 @@ uint8_t sensorID = 1;
 RTC_DATA_ATTR uint32_t msgCounter = 0;
 RTC_DATA_ATTR uint8_t pingBackoffStep = 0;
 
-bool gatewayFound = false;
+RTC_DATA_ATTR bool gatewayFound = false;
 bool waitingAck = false;
 
 unsigned long lastTx = 0;
@@ -320,6 +320,8 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  bool coldBoot = (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER);
+
   VextON();
   delay(100);
 
@@ -331,7 +333,9 @@ void setup() {
   display.init();
   display.setFont(ArialMT_Plain_10);
 
-  showMessage("Sensor Boot", "V3");
+  if (coldBoot) {
+    showMessage("Sensor Boot", "V3");
+  }
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
@@ -349,7 +353,7 @@ void setup() {
   }
 
   loadSensorID();
-  delay(2000);
+
   Wire1.begin(BME_SDA, BME_SCL);
   bmeFound = bme.begin(0x76, &Wire1);
 
@@ -360,24 +364,26 @@ void setup() {
                     Adafruit_BME280::SAMPLING_X1,
                     Adafruit_BME280::FILTER_OFF);
     Serial.println("BME280 OK");
-    showMessage("BME280", "Detected");
+    if (coldBoot) showMessage("BME280", "Detected");
   } else {
     Serial.println("BME280 not found");
-    showMessage("BME280", "Missing");
+    if (coldBoot) showMessage("BME280", "Missing");
   }
 
-  display.clear();
-  display.drawString(0, 0, "Sensor Boot V3");
-  display.drawString(0, 16, bmeFound ? "BME: OK" : "BME: MISSING");
-  display.display();
-  delay(1500);
-
-  showMessage("Heltec Batt", String(readBattery()) + "%");
-  delay(1500);
-
-  if (cameraBatteryAvailable) {
-    showMessage("Cam Batt", String(readCameraBattery()) + "%");
+  if (coldBoot) {
+    display.clear();
+    display.drawString(0, 0, "Sensor Boot V3");
+    display.drawString(0, 16, bmeFound ? "BME: OK" : "BME: MISSING");
+    display.display();
     delay(1500);
+
+    showMessage("Heltec Batt", String(readBattery()) + "%");
+    delay(1500);
+
+    if (cameraBatteryAvailable) {
+      showMessage("Cam Batt", String(readCameraBattery()) + "%");
+      delay(1500);
+    }
   }
 
   initRadio();
