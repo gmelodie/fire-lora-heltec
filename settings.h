@@ -33,6 +33,11 @@
 #define ADC_REF 3.3
 #define ADC_RES 4095.0
 #define VOLTAGE_DIVIDER_RATIO 2.0
+// Per-board calibration: V3.2 uses ~4.9, V3 uses ~49.
+// The code auto-normalizes to the correct decade for the detected chip revision,
+// so 4.9 and 49 are treated as equivalent — only the fractional part matters.
+#define BATTERY_RATIO 4.9f
+
 
 /* =========================================================
    Button

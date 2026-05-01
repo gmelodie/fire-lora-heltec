@@ -95,41 +95,62 @@ int readAdcBattery(uint8_t pin) {
 
 int readCameraBattery() { return readAdcBattery(CAMERA_BATTERY_PIN); }
 
-// Heltec internal battery: GPIO37 HIGH enables the 390k/100k divider.
-// GPIO1 attenuation must be explicitly set to ADC_11db in setup(); otherwise
-// ESP32-S3 silicon may default to a lower range and read ~10x low.
+// Heltec battery circuit differs between board revisions (detected via ESP32-S3 chip revision):
+//   V3  (rev 0, ROM esp32s3-20210327): no eFuse ADC calibration, so analogReadMilliVolts
+//       returns 0 — use raw analogRead instead. ADC input loading on the high-impedance
+//       390k/100k divider produces ~10x attenuation, so effective ratio is 49x not 4.9x.
+//   V3.2 (rev 1+): eFuse calibration present, analogReadMilliVolts works; standard 4.9x ratio.
+// Both boards use ADC_CTRL HIGH to enable the voltage divider.
 int readBattery() {
   static const uint16_t OCV[] = {4190, 4050, 3990, 3890, 3800, 3720, 3630, 3530, 3420, 3300, 3100};
   const int NUM_OCV = 11;
 
-  // Re-assert the voltage divider enable and attenuation on every call — both can
-  // be lost or left unset on some ESP32-S3 silicon/board variants.
+  bool isV3 = (ESP.getChipRevision() == 0);
+
   pinMode(ADC_CTRL_PIN, OUTPUT);
   digitalWrite(ADC_CTRL_PIN, HIGH);
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
   delay(5);
 
-  // The ESP32 doesn't have a particularly good ADC, so we calculate an average
-  int pinMv = 0;
+  int samples[NUM_ADC_SAMPLES];
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
-    pinMv += analogReadMilliVolts(BATTERY_PIN);
+    if (isV3)
+      samples[i] = (int)((float)analogRead(BATTERY_PIN) * (ADC_REF * 1000.0f) / ADC_RES);
+    else
+      samples[i] = (int)analogReadMilliVolts(BATTERY_PIN);
     delay(10);
   }
-  pinMv /= NUM_ADC_SAMPLES;
 
-  // 390k/100k divider → ratio (390+100)/100 = 4.9; ADC_11db attenuation must be set explicitly
-  uint32_t mv = (uint32_t)(pinMv * 4.9f);
-  Serial.printf("Heltec bat pin_mv=%d bat_mv=%lu\n", pinMv, mv);
+  int avgPinMv = 0;
+  for (int i = 0; i < NUM_ADC_SAMPLES; i++) avgPinMv += samples[i];
+  avgPinMv /= NUM_ADC_SAMPLES;
 
-  if (mv >= OCV[0]) return 100;
-  if (mv <= OCV[NUM_OCV - 1]) return 0;
+  float ratio = BATTERY_RATIO;
+  uint32_t avgMv = (uint32_t)(avgPinMv * ratio);
+  while (avgMv > 10000 && ratio >= 1.0f) { ratio /= 10.0f; avgMv /= 10; }
+  while (avgMv < 2000 && avgMv > 0)      { ratio *= 10.0f; avgMv *= 10; }
 
-  for (int i = 0; i < NUM_OCV - 1; i++) {
-    if (mv >= OCV[i + 1]) {
-      return (10 - i - 1) * 10 + (mv - OCV[i + 1]) * 10 / (OCV[i] - OCV[i + 1]);
+  int pctSum = 0;
+  for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
+    uint32_t mv = (uint32_t)(samples[i] * ratio);
+    int pct;
+    if (mv >= OCV[0]) pct = 100;
+    else if (mv <= OCV[NUM_OCV - 1]) pct = 0;
+    else {
+      pct = 0;
+      for (int j = 0; j < NUM_OCV - 1; j++) {
+        if (mv >= OCV[j + 1]) {
+          pct = (10 - j - 1) * 10 + (mv - OCV[j + 1]) * 10 / (OCV[j] - OCV[j + 1]);
+          break;
+        }
+      }
     }
+    pctSum += pct;
   }
-  return 0;
+
+  int pct = pctSum / NUM_ADC_SAMPLES;
+  Serial.printf("Heltec bat chip_rev=%d pin_mv=%d bat_mv=%lu pct=%d%%\n", ESP.getChipRevision(), avgPinMv, avgMv, pct);
+  return pct;
 }
 
 /* =========================================================
@@ -345,7 +366,6 @@ void setup() {
 
   analogReadResolution(12);
 
-  // HIGH enables the 390k/100k voltage divider (confirmed on Heltec V3)
   pinMode(ADC_CTRL_PIN, OUTPUT);
   digitalWrite(ADC_CTRL_PIN, HIGH);
   // Must be set explicitly; default attenuation varies between ESP32-S3 silicon revisions
