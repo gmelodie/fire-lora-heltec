@@ -102,8 +102,12 @@ int readBattery() {
   static const uint16_t OCV[] = {4190, 4050, 3990, 3890, 3800, 3720, 3630, 3530, 3420, 3300, 3100};
   const int NUM_OCV = 11;
 
-  // ADC attenuation is lost after light sleep on ESP32-S3, so re-apply it here
+  // Re-assert the voltage divider enable and attenuation on every call — both can
+  // be lost or left unset on some ESP32-S3 silicon/board variants.
+  pinMode(ADC_CTRL_PIN, OUTPUT);
+  digitalWrite(ADC_CTRL_PIN, HIGH);
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+  delay(5);
 
   // The ESP32 doesn't have a particularly good ADC, so we calculate an average
   int pinMv = 0;
