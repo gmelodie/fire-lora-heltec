@@ -80,19 +80,24 @@ The firmware, API server, and startup script all read from this one file.
 Use `recompile.sh` to compile and flash a sketch:
 
 ```bash
-./recompile.sh <project> <port>
+./recompile.sh <project> <port> [sensor_id] [--camera]
 ```
 
 | Argument | Description |
 |---|---|
 | `project` | `sensor` or `gateway` |
 | `port` | Serial port, e.g. `/dev/ttyUSB0` |
+| `sensor_id` | Optional. Integer 1–254, sets `SENSOR_ID` at build time |
+| `--camera` | Optional. Enables camera support (`-DCAMERA`) |
 
 Examples:
 
 ```bash
 ./recompile.sh gateway /dev/ttyUSB0
 ./recompile.sh sensor /dev/ttyUSB0
+./recompile.sh sensor /dev/ttyUSB0 3
+./recompile.sh sensor /dev/ttyUSB0 3 --camera
+./recompile.sh sensor /dev/ttyUSB0 --camera
 ```
 
 After flashing, `recompile.sh` opens a serial monitor at 115200 baud automatically.
