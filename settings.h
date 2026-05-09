@@ -13,7 +13,7 @@
 
 #define RX_FREQ_MHZ 915.0f
 #define RX_BW_KHZ 125.0f
-#define RX_SF 7
+#define RX_SF 10
 #define RX_CR 5
 #define TX_POWER_DBM 14
 
