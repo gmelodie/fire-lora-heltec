@@ -45,6 +45,22 @@ bool bmeFound = false;
 
 bool cameraBatteryAvailable = (CAMERA_BATTERY_AVAILABLE == 1);
 
+RTC_DATA_ATTR bool deployMode = false;
+int16_t deployRSSI = 0;
+unsigned long lastDeployPongTime = 0;
+unsigned long lastDeployPing = 0;
+unsigned long lastDeployDisplay = 0;
+int cachedBattery = -1;
+unsigned long lastBatteryUpdate = 0;
+bool deployGwLost = false;
+
+bool firstNormalSend = false;
+String cachedTemp = "-";
+String cachedHumidity = "-";
+String cachedPressure = "-";
+String cachedHeltecBat = "-";
+unsigned long screenTimeoutMs = SCREEN_TIMEOUT;
+
 
 /* =========================================================
    OLED Power
@@ -70,6 +86,32 @@ void showMessage(String l1, String l2 = "") {
 
   screenOn = true;
   screenTimer = millis();
+}
+
+void showDeployStatus() {
+  if (cachedBattery < 0 || millis() - lastBatteryUpdate > 30000) {
+    cachedBattery = readBattery();
+    lastBatteryUpdate = millis();
+  }
+  bool gwInRange = (lastDeployPongTime > 0 && !deployGwLost);
+  bool pingPending = lastDeployPing > 0 &&
+                     (lastDeployPongTime == 0 || lastDeployPing > lastDeployPongTime) &&
+                     !deployGwLost;
+
+  String gwLine;
+  if (deployGwLost)     gwLine = "GW: NO SIGNAL";
+  else if (pingPending) gwLine = "GW: ---";
+  else                  gwLine = "GW: IN RANGE";
+
+  display.displayOn();
+  display.clear();
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(0, 0,  "DEPLOY  ID:" + String(sensorID));
+  display.drawString(0, 14, gwLine);
+  display.drawString(0, 28, "Bat: " + String(cachedBattery) + "%");
+  display.drawString(0, 42, gwInRange ? "RSSI: " + String(deployRSSI) + "dBm" : "RSSI: ---");
+  display.display();
 }
 
 /* =========================================================
@@ -254,6 +296,10 @@ void sendSensorData() {
   }
 
   String heltecBattery = String(readBattery());
+  cachedTemp = temperature;
+  cachedHumidity = humidity;
+  cachedPressure = pressure;
+  cachedHeltecBat = heltecBattery;
 
   if (cameraBatteryAvailable) {
     cameraBattery = String(readCameraBattery());
@@ -279,12 +325,18 @@ void sendSensorData() {
    RX
    ========================================================= */
 
-void processPacket(String msg) {
+void processPacket(String msg, int16_t rssi) {
   Serial.println("RX: " + msg);
 
   if (msg.startsWith("PONG")) {
     gatewayFound = true;
-    showMessage("Gateway", "Connected");
+    if (deployMode) {
+      deployRSSI = rssi;
+      lastDeployPongTime = millis();
+      deployGwLost = false;
+    } else {
+      showMessage("Gateway", "Connected");
+    }
     return;
   }
 
@@ -292,7 +344,25 @@ void processPacket(String msg) {
     waitingAck = false;
     retryCount = 0;
     msgCounter++;
-    showMessage("ACK", "OK");
+    if (!deployMode) {
+      if (firstNormalSend) {
+        firstNormalSend = false;
+        screenTimeoutMs = 5000;
+        display.displayOn();
+        display.clear();
+        display.setFont(ArialMT_Plain_10);
+        display.setTextAlignment(TEXT_ALIGN_LEFT);
+        display.drawString(0,  0, "SENT OK   Bat:" + cachedHeltecBat + "%");
+        display.drawString(0, 16, "T: " + cachedTemp + " C");
+        display.drawString(0, 32, "H: " + cachedHumidity + " %");
+        display.drawString(0, 48, "P: " + cachedPressure + " hPa");
+        display.display();
+        screenOn = true;
+        screenTimer = millis();
+      } else {
+        showMessage("ACK", "OK");
+      }
+    }
     return;
   }
   Serial.println();
@@ -307,7 +377,8 @@ void handleReceive() {
   int state = radio.readData(msg);
 
   if (state == RADIOLIB_ERR_NONE && msg.length() > 0) {
-    processPacket(msg);
+    int16_t rssi = radio.getRSSI();
+    processPacket(msg, rssi);
   }
 
   radio.startReceive();
@@ -319,19 +390,43 @@ void handleReceive() {
 
 void handleButton() {
   static bool lastState = HIGH;
+  static unsigned long pressStart = 0;
 
   bool current = digitalRead(BUTTON_PIN);
 
   if (lastState == HIGH && current == LOW) {
-    sensorID++;
+    pressStart = millis();
+  }
 
-    if (sensorID > MAX_SENSORS)
-      sensorID = 1;
+  if (lastState == LOW && current == HIGH) {
+    unsigned long held = millis() - pressStart;
 
-    saveSensorID();
-
-    showMessage("New Sensor ID", String(sensorID));
-    delay(300);
+    if (held < 50) {
+      // ignore (bounce)
+    } else if (held < 1000) {
+      // short press: toggle deploy mode
+      deployMode = !deployMode;
+      if (deployMode) {
+        lastDeployPongTime = 0;
+        deployRSSI = 0;
+        lastDeployPing = 0;
+        lastDeployDisplay = millis();
+        cachedBattery = -1;
+        deployGwLost = false;
+        showMessage("Deploy Mode", "ON");
+      } else {
+        pingBackoffStep = 0;
+        lastTx = 0;
+        firstNormalSend = true;
+        showMessage("Deploy Mode", "OFF");
+      }
+    } else {
+      // long press: cycle sensor ID
+      sensorID++;
+      if (sensorID > MAX_SENSORS) sensorID = 1;
+      saveSensorID();
+      showMessage("Sensor ID", String(sensorID));
+    }
   }
 
   lastState = current;
@@ -377,6 +472,15 @@ void setup() {
   }
 
   loadSensorID();
+
+  if (coldBoot) {
+    deployMode = true;
+    lastDeployPongTime = 0;
+    deployRSSI = 0;
+    lastDeployPing = 0;
+    cachedBattery = -1;
+    deployGwLost = false;
+  }
 
   Wire1.begin(BME_SDA, BME_SCL);
   bmeFound = bme.begin(0x76, &Wire1);
@@ -425,11 +529,33 @@ void loop() {
   handleReceive();
   handleButton();
 
-  if (screenOn && millis() - screenTimer > SCREEN_TIMEOUT) {
+  if (deployMode) {
+    if (millis() - lastDeployDisplay >= 1000) {
+      showDeployStatus();
+      lastDeployDisplay = millis();
+    }
+    if (!deployGwLost && lastDeployPing > 0 &&
+        millis() - lastDeployPing > 2000 &&
+        (lastDeployPongTime == 0 || lastDeployPing > lastDeployPongTime)) {
+      deployGwLost = true;
+    }
+
+    if (lastDeployPing == 0 || millis() - lastDeployPing >= DEPLOY_PING_INTERVAL_MS) {
+      String pingMsg = "PING|" + String(sensorID);
+      Serial.println("DEPLOY TX: " + pingMsg);
+      radio.transmit(pingMsg);
+      radio.startReceive();
+      lastDeployPing = millis();
+    }
+    return;
+  }
+
+  if (screenOn && millis() - screenTimer > screenTimeoutMs) {
     display.clear();
     display.display();
     display.displayOff();
     screenOn = false;
+    screenTimeoutMs = SCREEN_TIMEOUT;
   }
 
   if (!gatewayFound) {
@@ -467,6 +593,7 @@ void loop() {
   }
 
   if (gatewayFound && !waitingAck && !firstTx) {
+    if (screenOn) return;
     Serial.printf("AWAKE_S:%lu\n", (millis() - wakeTime) / 1000);
     deepSleep(TX_INTERVAL);
   }

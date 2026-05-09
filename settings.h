@@ -59,7 +59,7 @@
 #define TX_INTERVAL 5400000UL // milliseconds - 90mins
 #define ACK_TIMEOUT 2000
 #define MAX_RETRIES 3
-#define SCREEN_TIMEOUT 5000
+#define SCREEN_TIMEOUT 3000
 #define MAX_SENSORS 254
 
 #define PING_INTERVAL_MS    2000UL
@@ -67,6 +67,8 @@
 #define BACKOFF_BASE_MS     30000UL  // first backoff sleep: 30s
 #define BACKOFF_MAX_MS      300000UL // cap at 5 min
 #define MAX_BACKOFF_STEP    8        // prevents bit-shift overflow (30000 << 8 still fits uint32_t)
+
+#define DEPLOY_PING_INTERVAL_MS  8000UL  // ping rate in deploy mode
 
 /* =========================================================
    Battery to ADC VALUES
