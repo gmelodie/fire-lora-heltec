@@ -15,7 +15,7 @@
 #define RX_BW_KHZ 125.0f
 #define RX_SF 10
 #define RX_CR 5
-#define TX_POWER_DBM 14
+#define TX_POWER_DBM 16
 
 /* =========================================================
    WiFi state
