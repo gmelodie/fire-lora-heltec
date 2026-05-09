@@ -137,22 +137,26 @@ int readAdcBattery(uint8_t pin) {
 
 int readCameraBattery() { return readAdcBattery(CAMERA_BATTERY_PIN); }
 
-// Heltec battery circuit differs between board revisions (detected via ESP32-S3 chip revision):
-//   V3  (rev 0, ROM esp32s3-20210327): no eFuse ADC calibration, so analogReadMilliVolts
-//       returns 0 — use raw analogRead instead. ADC input loading on the high-impedance
-//       390k/100k divider produces ~10x attenuation, so effective ratio is 49x not 4.9x.
-//   V3.2 (rev 1+): eFuse calibration present, analogReadMilliVolts works; standard 4.9x ratio.
+// Heltec battery circuit differs between board revisions:
+//   V3:   no eFuse ADC calibration, so analogReadMilliVolts returns 0 — use raw analogRead
+//         instead. ADC input loading on the high-impedance 390k/100k divider produces ~10x
+//         attenuation, so effective ratio is 49x not 4.9x.
+//   V3.2: eFuse calibration present, analogReadMilliVolts works; standard 4.9x ratio.
+// chip_rev is unreliable (V3.2 can report 0), so detect by probing analogReadMilliVolts.
 // Both boards use ADC_CTRL HIGH to enable the voltage divider.
 int readBattery() {
-  static const uint16_t OCV[] = {4190, 4050, 3990, 3890, 3800, 3720, 3630, 3530, 3420, 3300, 3100};
-  const int NUM_OCV = 11;
-
-  bool isV3 = (ESP.getChipRevision() == 0);
+  static const uint16_t OCV[] = {
+    4190, 4120, 4050, 4020, 3990, 3940, 3890, 3845, 3800, 3760,
+    3720, 3675, 3630, 3580, 3530, 3475, 3420, 3360, 3300, 3200, 3100
+  };
+  const int NUM_OCV = 21;
 
   pinMode(ADC_CTRL_PIN, OUTPUT);
   digitalWrite(ADC_CTRL_PIN, HIGH);
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
   delay(5);
+
+  bool isV3 = (analogReadMilliVolts(BATTERY_PIN) == 0);
 
   int samples[NUM_ADC_SAMPLES];
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
@@ -167,7 +171,7 @@ int readBattery() {
   for (int i = 0; i < NUM_ADC_SAMPLES; i++) avgPinMv += samples[i];
   avgPinMv /= NUM_ADC_SAMPLES;
 
-  float ratio = BATTERY_RATIO;
+  float ratio = isV3 ? BATTERY_RATIO_V3 : BATTERY_RATIO_V32;
   uint32_t avgMv = (uint32_t)(avgPinMv * ratio);
   while (avgMv > 10000 && ratio >= 1.0f) { ratio /= 10.0f; avgMv /= 10; }
   while (avgMv < 2000 && avgMv > 0)      { ratio *= 10.0f; avgMv *= 10; }
@@ -180,9 +184,10 @@ int readBattery() {
     else if (mv <= OCV[NUM_OCV - 1]) pct = 0;
     else {
       pct = 0;
+      const int PCT_STEP = 100 / (NUM_OCV - 1);
       for (int j = 0; j < NUM_OCV - 1; j++) {
         if (mv >= OCV[j + 1]) {
-          pct = (10 - j - 1) * 10 + (mv - OCV[j + 1]) * 10 / (OCV[j] - OCV[j + 1]);
+          pct = (NUM_OCV - j - 2) * PCT_STEP + (mv - OCV[j + 1]) * PCT_STEP / (OCV[j] - OCV[j + 1]);
           break;
         }
       }
