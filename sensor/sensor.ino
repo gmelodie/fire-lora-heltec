@@ -46,6 +46,9 @@ bool bmeFound = false;
 bool cameraBatteryAvailable = (CAMERA_BATTERY_AVAILABLE == 1);
 
 RTC_DATA_ATTR bool deployMode = false;
+RTC_DATA_ATTR int8_t cachedIsV3 = -1;   // -1 = unknown, 0 = V3.2, 1 = V3
+RTC_DATA_ATTR int filteredBatteryPct = -1;
+RTC_DATA_ATTR int lastGoodBatteryPct = 100;
 int16_t deployRSSI = 0;
 unsigned long lastDeployPongTime = 0;
 unsigned long lastDeployPing = 0;
@@ -138,66 +141,90 @@ int readAdcBattery(uint8_t pin) {
 int readCameraBattery() { return readAdcBattery(CAMERA_BATTERY_PIN); }
 
 // Heltec battery circuit differs between board revisions:
-//   V3:   no eFuse ADC calibration, so analogReadMilliVolts returns 0 — use raw analogRead
-//         instead. ADC input loading on the high-impedance 390k/100k divider produces ~10x
-//         attenuation, so effective ratio is 49x not 4.9x.
-//   V3.2: eFuse calibration present, analogReadMilliVolts works; standard 4.9x ratio.
-// chip_rev is unreliable (V3.2 can report 0), so detect by probing analogReadMilliVolts.
-// Both boards use ADC_CTRL HIGH to enable the voltage divider.
+//   V3:   no eFuse ADC calibration → analogReadMilliVolts returns 0; use raw analogRead.
+//         ADC input loading on the 390k/100k divider gives effective ratio ~49x.
+//   V3.2: eFuse calibration present → analogReadMilliVolts works; ratio ~5.03x.
+// Algorithm: discard first sample (S/H bias), take N samples, median-filter to reject
+// outliers, convert ONCE from median pin voltage to battery mV, interpolate OCV once,
+// then IIR-smooth across calls. Avoids the noise amplification of averaging per-sample
+// percentages through a non-linear interpolation.
 int readBattery() {
   static const uint16_t OCV[] = {
     4190, 4120, 4050, 4020, 3990, 3940, 3890, 3845, 3800, 3760,
     3720, 3675, 3630, 3580, 3530, 3475, 3420, 3360, 3300, 3200, 3100
   };
   const int NUM_OCV = 21;
+  const int N = 20;
 
   pinMode(ADC_CTRL_PIN, OUTPUT);
   digitalWrite(ADC_CTRL_PIN, HIGH);
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+  delay(20);
+
+  if (cachedIsV3 < 0) {
+    int zeroes = 0;
+    for (int i = 0; i < 5; i++) {
+      if (analogReadMilliVolts(BATTERY_PIN) == 0) zeroes++;
+      delay(2);
+    }
+    cachedIsV3 = (zeroes >= 3) ? 1 : 0;
+  }
+  bool isV3 = (cachedIsV3 == 1);
+
+  if (isV3) analogRead(BATTERY_PIN);
+  else      analogReadMilliVolts(BATTERY_PIN);
   delay(5);
 
-  bool isV3 = (analogReadMilliVolts(BATTERY_PIN) == 0);
-
-  int samples[NUM_ADC_SAMPLES];
-  for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
-    if (isV3)
-      samples[i] = (int)((float)analogRead(BATTERY_PIN) * (ADC_REF * 1000.0f) / ADC_RES);
-    else
-      samples[i] = (int)analogReadMilliVolts(BATTERY_PIN);
-    delay(10);
+  int samples[N];
+  for (int i = 0; i < N; i++) {
+    samples[i] = isV3
+      ? (int)((float)analogRead(BATTERY_PIN) * (ADC_REF * 1000.0f) / ADC_RES)
+      : (int)analogReadMilliVolts(BATTERY_PIN);
+    delay(5);
   }
 
-  int avgPinMv = 0;
-  for (int i = 0; i < NUM_ADC_SAMPLES; i++) avgPinMv += samples[i];
-  avgPinMv /= NUM_ADC_SAMPLES;
+  for (int i = 1; i < N; i++) {
+    int x = samples[i];
+    int j = i - 1;
+    while (j >= 0 && samples[j] > x) { samples[j + 1] = samples[j]; j--; }
+    samples[j + 1] = x;
+  }
+  int medPinMv = samples[N / 2];
 
-  float ratio = isV3 ? BATTERY_RATIO_V3 : BATTERY_RATIO_V32;
-  uint32_t avgMv = (uint32_t)(avgPinMv * ratio);
-  while (avgMv > 10000 && ratio >= 1.0f) { ratio /= 10.0f; avgMv /= 10; }
-  while (avgMv < 2000 && avgMv > 0)      { ratio *= 10.0f; avgMv *= 10; }
+  uint32_t batMv = (uint32_t)(medPinMv * BATTERY_RATIO);
 
-  int pctSum = 0;
-  for (int i = 0; i < NUM_ADC_SAMPLES; i++) {
-    uint32_t mv = (uint32_t)(samples[i] * ratio);
-    int pct;
-    if (mv >= OCV[0]) pct = 100;
-    else if (mv <= OCV[NUM_OCV - 1]) pct = 0;
-    else {
-      pct = 0;
-      const int PCT_STEP = 100 / (NUM_OCV - 1);
-      for (int j = 0; j < NUM_OCV - 1; j++) {
-        if (mv >= OCV[j + 1]) {
-          pct = (NUM_OCV - j - 2) * PCT_STEP + (mv - OCV[j + 1]) * PCT_STEP / (OCV[j] - OCV[j + 1]);
-          break;
-        }
+  // Plausibility clamp. A real 1S LiPo lives in 3.0–4.2 V. Anything outside that is
+  // almost certainly an ADC glitch or wiring issue, and feeding it through the OCV
+  // interpolation would yield 0 % or 100 % nonsense. Return the last good value.
+  if (batMv < 2800 || batMv > 4400) {
+    Serial.printf("Heltec bat OOR isV3=%d med_pin_mv=%d bat_mv=%lu — keeping last=%d\n",
+                  isV3, medPinMv, batMv, lastGoodBatteryPct);
+    return lastGoodBatteryPct;
+  }
+
+  int pct;
+  if (batMv >= OCV[0]) pct = 100;
+  else if (batMv <= OCV[NUM_OCV - 1]) pct = 0;
+  else {
+    const int PCT_STEP = 100 / (NUM_OCV - 1);
+    pct = 0;
+    for (int j = 0; j < NUM_OCV - 1; j++) {
+      if (batMv >= OCV[j + 1]) {
+        pct = (NUM_OCV - j - 2) * PCT_STEP
+            + (int)((batMv - OCV[j + 1]) * PCT_STEP / (OCV[j] - OCV[j + 1]));
+        break;
       }
     }
-    pctSum += pct;
   }
 
-  int pct = pctSum / NUM_ADC_SAMPLES;
-  Serial.printf("Heltec bat chip_rev=%d pin_mv=%d bat_mv=%lu pct=%d%%\n", ESP.getChipRevision(), avgPinMv, avgMv, pct);
-  return pct;
+  if (filteredBatteryPct < 0) filteredBatteryPct = pct;
+  else                        filteredBatteryPct = (filteredBatteryPct * 3 + pct + 2) / 4;
+
+  lastGoodBatteryPct = filteredBatteryPct;
+
+  Serial.printf("Heltec bat isV3=%d med_pin_mv=%d bat_mv=%lu raw_pct=%d filt_pct=%d\n",
+                isV3, medPinMv, batMv, pct, filteredBatteryPct);
+  return filteredBatteryPct;
 }
 
 /* =========================================================

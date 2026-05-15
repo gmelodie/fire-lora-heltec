@@ -35,8 +35,7 @@
 #define VOLTAGE_DIVIDER_RATIO 2.0
 // V3:   390k/100k divider with ADC loading effect → effective ~49x (auto-normalized to same as 4.9)
 // V3.2: different resistors → empirically ~5.03x (measured: 829mV pin → 4170mV actual)
-#define BATTERY_RATIO_V3   4.9f
-#define BATTERY_RATIO_V32  5.03f
+#define BATTERY_RATIO   4.9f
 
 
 /* =========================================================
