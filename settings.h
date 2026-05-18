@@ -55,7 +55,9 @@
    Timing
    ========================================================= */
 
-#define TX_INTERVAL 5400000UL // milliseconds - 90mins
+#ifndef TX_INTERVAL
+#define TX_INTERVAL 3600000UL // 1 hour default; override with --interval flag in recompile.sh
+#endif
 #define ACK_TIMEOUT 2000
 #define MAX_RETRIES 3
 #define SCREEN_TIMEOUT 3000

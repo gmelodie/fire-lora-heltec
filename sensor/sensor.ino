@@ -304,6 +304,7 @@ void transmit(String msg) {
     Serial.print("TX error: ");
     Serial.println(state);
   }
+  receivedFlag = false;
   radio.startReceive();
   delay(100);
 }
@@ -576,6 +577,7 @@ void loop() {
       String pingMsg = "PING|" + String(sensorID);
       Serial.println("DEPLOY TX: " + pingMsg);
       radio.transmit(pingMsg);
+      receivedFlag = false;
       radio.startReceive();
       lastDeployPing = millis();
     }

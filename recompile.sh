@@ -1,19 +1,24 @@
 #!/bin/bash
 
 usage() {
-    echo "usage: ./recompile.sh <project> <port> [sensor_id] [--camera]"
+    echo "usage: ./recompile.sh <project> <port> [sensor_id] [--camera] [--interval=<minutes>]"
     echo "example: ./recompile.sh sensor /dev/ttyUSB0"
     echo "example: ./recompile.sh sensor /dev/ttyUSB0 3"
     echo "example: ./recompile.sh sensor /dev/ttyUSB0 3 --camera"
     echo "example: ./recompile.sh sensor /dev/ttyUSB0 --camera"
+    echo "example: ./recompile.sh sensor /dev/ttyUSB0 --interval=30"
     echo "sensor_id must be between 1 and 254"
+    echo "--interval sets reading interval in minutes (default: 60)"
 }
 
 CAMERA=0
+INTERVAL_MS=""
 ARGS=()
 for arg in "$@"; do
     if [ "$arg" = "--camera" ]; then
         CAMERA=1
+    elif [[ "$arg" =~ ^--interval=([0-9]+)$ ]]; then
+        INTERVAL_MS=$(( ${BASH_REMATCH[1]} * 60000 ))
     else
         ARGS+=("$arg")
     fi
@@ -43,6 +48,11 @@ fi
 if [ "$CAMERA" -eq 1 ]; then
     EXTRA_DEFINES="$EXTRA_DEFINES -DCAMERA"
     echo "Camera: enabled"
+fi
+
+if [ -n "$INTERVAL_MS" ]; then
+    EXTRA_DEFINES="$EXTRA_DEFINES -DTX_INTERVAL=${INTERVAL_MS}UL"
+    echo "TX interval: $((INTERVAL_MS / 60000)) minutes"
 fi
 
 EXTRA_FLAGS=()

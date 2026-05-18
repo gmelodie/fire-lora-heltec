@@ -354,18 +354,21 @@ void loop()
 
   if (msg.startsWith("PING|"))
   {
-    handlePing(msg);
-    radio.startReceive();
+    handlePing(msg);  // sendPong() calls startReceive
     return;
   }
-  radio.startReceive();
 
   if (msg.startsWith("DATA|")) {
-    String payload = handleData(msg, rssi);
+    String payload = handleData(msg, rssi);  // sendAck() calls startReceive
     if (payload.length() > 0) {
       bool ok = httpsPost(API_URL "/sensor", payload);
       showPacket(ok ? "API OK" : "API FAILED", "", "");
+    } else {
+      radio.startReceive();  // parse failed, sendAck was not called
     }
+    return;
   }
+
+  radio.startReceive();  // unknown message type
   Serial.println();
 }
