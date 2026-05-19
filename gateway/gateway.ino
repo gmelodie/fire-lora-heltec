@@ -303,7 +303,7 @@ void setup()
     configTime(0, 0, "pool.ntp.org");
     struct tm t;
     int tries = 0;
-    while (!getLocalTime(&t) && tries++ < 20)
+    while (!getLocalTime(&t) && tries++ < 6)
       delay(500);
     Serial.println(getLocalTime(&t) ? "NTP OK" : "NTP FAILED");
   }
