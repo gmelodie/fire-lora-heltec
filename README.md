@@ -164,6 +164,17 @@ All endpoints require the `X-API-Password` header.
 | `GET` | `/readings/latest` | Latest reading per sensor |
 | `GET` | `/readings` | Historical readings — supports `sensor_id`, `from_ts`, `to_ts`, `limit` query params |
 
+### Interactive docs
+
+The API publishes an **OpenAPI 3.1** spec, with two built-in UIs:
+
+| URL | Description |
+|---|---|
+| `/scalar` | Scalar — modern UI with a built-in API client (recommended) |
+| `/docs` | Swagger UI — click *Authorize* and paste the API password |
+| `/redoc` | ReDoc — read-only, prints nicely |
+| `/openapi.json` | Raw OpenAPI 3.1 spec (machine-readable; feed it to a client generator) |
+
 ## Utilities
 
 ### Plot sensor data
