@@ -13,7 +13,10 @@
 
 #define RX_FREQ_MHZ 915.0f
 #define RX_BW_KHZ 125.0f
-#define RX_SF 10
+// SF11 trades airtime for ~2.5 dB more link budget vs SF10 → longer reach. Sensor and
+// gateway share this header (symlinked), so both stay in sync. Bumping SF roughly doubles
+// time-on-air (DATA ~1.1s), so ACK_TIMEOUT below is widened to fit the round trip.
+#define RX_SF 11
 #define RX_CR 5
 #define TX_POWER_DBM 16
 
@@ -58,7 +61,7 @@
 #ifndef TX_INTERVAL
 #define TX_INTERVAL 3600000UL // 1 hour default; override with --interval flag in recompile.sh
 #endif
-#define ACK_TIMEOUT 2000
+#define ACK_TIMEOUT 3000  // SF11 round trip (DATA up ~1.1s + ACK down ~0.5s) needs headroom
 #define MAX_RETRIES 3
 #define SCREEN_TIMEOUT 3000
 #define MAX_SENSORS 254
