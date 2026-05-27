@@ -55,6 +55,7 @@ unsigned long lastDeployPongTime = 0;
 unsigned long lastDeployPing = 0;
 unsigned long lastDeployDisplay = 0;
 int cachedBattery = -1;
+int cycleBatteryPct = -1;   // battery % read once per wake in setup() with the radio idle
 unsigned long lastBatteryUpdate = 0;
 bool deployGwLost = false;
 
@@ -155,7 +156,7 @@ int readBattery() {
     3720, 3675, 3630, 3580, 3530, 3475, 3420, 3360, 3300, 3200, 3100
   };
   const int NUM_OCV = 21;
-  const int N = 20;
+  const int N = NUM_ADC_SAMPLES;
 
   pinMode(ADC_CTRL_PIN, OUTPUT);
   digitalWrite(ADC_CTRL_PIN, HIGH);
@@ -190,7 +191,10 @@ int readBattery() {
     while (j >= 0 && samples[j] > x) { samples[j + 1] = samples[j]; j--; }
     samples[j + 1] = x;
   }
-  int medPinMv = samples[N / 2];
+  // True median: average the two centre samples for even N, take the middle one for odd N.
+  int medPinMv = (N % 2 == 0)
+    ? (samples[N / 2 - 1] + samples[N / 2]) / 2
+    : samples[N / 2];
 
   uint32_t batMv = (uint32_t)(medPinMv * BATTERY_RATIO);
 
@@ -329,7 +333,9 @@ void sendSensorData() {
     pressure = String(bme.readPressure() / 100.0F, 2);
   }
 
-  String heltecBattery = String(readBattery());
+  // Use the per-wake reading taken in setup() with the radio idle; fall back to a fresh
+  // read if it was never populated (e.g. deploy mode re-entry).
+  String heltecBattery = String(cycleBatteryPct >= 0 ? cycleBatteryPct : readBattery());
   cachedTemp = temperature;
   cachedHumidity = humidity;
   cachedPressure = pressure;
@@ -472,9 +478,22 @@ void handleButton() {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
 
-  bool coldBoot = (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER);
+  // Wake classification:
+  //   timerWake — scheduled deep-sleep wake; the common case, keep it cheap.
+  //   powerOn   — genuine power-up or a flash/upload; the only case that should land in
+  //               Deploy Mode for field placement, and the only one that needs the long
+  //               serial settle + boot splash screens.
+  //   anything else (brownout, watchdog, panic) is an unexpected field reset: skip deploy
+  //               and the splashes, fall through to the normal send/sleep path so the node
+  //               recovers and re-sleeps instead of draining the battery awake.
+  bool timerWake = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER);
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  bool powerOn = !timerWake &&
+                 (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_SW);
+  bool coldBoot = powerOn;  // boot splash screens only on a real power-on/flash
+
+  delay(powerOn ? 1000 : 50);  // long serial settle only on power-on; cheap on timer wakes
 
   VextON();
   delay(100);
@@ -532,6 +551,10 @@ void setup() {
     if (coldBoot) showMessage("BME280", "Missing");
   }
 
+  // Read the battery once per wake while the radio is still off, so the divider sees a
+  // near open-circuit voltage instead of RX/TX load sag. sendSensorData() reuses this.
+  cycleBatteryPct = readBattery();
+
   if (coldBoot) {
     display.clear();
     display.drawString(0, 0, "Sensor Boot V3");
@@ -539,7 +562,7 @@ void setup() {
     display.display();
     delay(1500);
 
-    showMessage("Heltec Batt", String(readBattery()) + "%");
+    showMessage("Heltec Batt", String(cycleBatteryPct) + "%");
     delay(1500);
 
     if (cameraBatteryAvailable) {
