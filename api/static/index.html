@@ -11,9 +11,14 @@
 
   <div id="login-overlay">
     <div class="login-box">
+      <span class="login-icon">&#9650;</span>
       <h2>Fire Watch</h2>
       <p>Enter API password to access the dashboard</p>
       <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+      <label class="remember-row">
+        <input type="checkbox" id="remember-me" checked>
+        Keep me signed in on this device
+      </label>
       <button id="login-btn">Login</button>
       <p id="login-error" class="error hidden">Wrong password. Try again.</p>
     </div>
@@ -25,7 +30,8 @@
       Fire Watch &mdash; Cerrado Sensor Dashboard
     </div>
     <div class="header-meta">
-      <span id="refresh-badge">Refreshing in <span id="refresh-countdown">30</span>s</span>
+      <span id="refresh-badge"><span class="refresh-dot"></span>Refreshing in <span id="refresh-countdown">30</span>s</span>
+      <button id="logout-btn" class="logout-btn" title="Sign out">Logout</button>
     </div>
   </header>
 

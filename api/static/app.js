@@ -1,13 +1,32 @@
 'use strict';
 
 // ---- Auth ----
+//
+// Password is kept in localStorage when "Remember me" is checked (survives
+// browser restarts) or sessionStorage otherwise (cleared when the tab closes).
 
 const Auth = {
-  getPassword() { return sessionStorage.getItem('apiPassword'); },
-  setPassword(pw) { sessionStorage.setItem('apiPassword', pw); },
-  clear() { sessionStorage.removeItem('apiPassword'); },
+  KEY: 'apiPassword',
+  getPassword() {
+    return localStorage.getItem(this.KEY) || sessionStorage.getItem(this.KEY);
+  },
+  setPassword(pw, remember) {
+    const store = remember ? localStorage : sessionStorage;
+    const other = remember ? sessionStorage : localStorage;
+    store.setItem(this.KEY, pw);
+    other.removeItem(this.KEY);
+  },
+  clear() {
+    localStorage.removeItem(this.KEY);
+    sessionStorage.removeItem(this.KEY);
+  },
   headers() { return { 'X-API-Password': this.getPassword() }; },
 };
+
+function logout() {
+  Auth.clear();
+  location.reload();
+}
 
 function showLoginOverlay() {
   document.getElementById('login-overlay').classList.remove('hidden');
@@ -322,13 +341,16 @@ async function initDashboard() {
 async function handleLogin() {
   const pw = document.getElementById('login-password').value.trim();
   if (!pw) return;
-  Auth.setPassword(pw);
+  const remember = document.getElementById('remember-me').checked;
+  Auth.setPassword(pw, remember);
   try {
     await apiFetch('/readings/latest');
+    document.getElementById('login-error').classList.add('hidden');
     hideLoginOverlay();
     await initDashboard();
   } catch (err) {
     if (err.message === 'Unauthorized') {
+      Auth.clear();
       document.getElementById('login-error').classList.remove('hidden');
     }
   }
@@ -339,6 +361,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('login-password').addEventListener('keydown', e => {
     if (e.key === 'Enter') handleLogin();
   });
+  document.getElementById('logout-btn').addEventListener('click', logout);
 
   if (!Auth.getPassword()) {
     showLoginOverlay();

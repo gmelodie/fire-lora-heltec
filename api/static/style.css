@@ -25,30 +25,44 @@ body {
 #login-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
+  background: radial-gradient(circle at 50% 35%, rgba(249,115,22,0.12), transparent 55%), rgba(0,0,0,0.88);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
+  animation: fade-in 0.25s ease;
 }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 #login-overlay.hidden { display: none; }
 
 .login-box {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 2rem 2.5rem;
-  width: 320px;
+  border-radius: 10px;
+  padding: 2.25rem 2.5rem;
+  width: 340px;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+}
+
+.login-icon {
+  color: var(--accent);
+  font-size: 1.75rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 12px rgba(249,115,22,0.5));
 }
 
 .login-box h2 {
-  color: var(--accent);
+  color: var(--text);
   font-size: 1.4rem;
   letter-spacing: 0.05em;
+  margin-top: -0.25rem;
 }
 
 .login-box p { color: var(--muted); font-size: 0.85rem; }
@@ -56,16 +70,64 @@ body {
 .login-box input[type="password"] {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--text);
-  padding: 0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  font-family: inherit;
   font-size: 0.9rem;
   width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .login-box input[type="password"]:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(249,115,22,0.18);
+}
+
+.login-box .login-icon { align-self: center; }
+
+.login-box button { align-self: stretch; padding: 0.6rem 1.1rem; }
+
+/* ---- Remember me ---- */
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-row input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.remember-row input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.remember-row input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 /* ---- Header ---- */
@@ -88,9 +150,52 @@ header {
   letter-spacing: 0.04em;
 }
 
-.header-icon { margin-right: 0.4rem; }
+.header-icon {
+  margin-right: 0.4rem;
+  filter: drop-shadow(0 0 6px rgba(249,115,22,0.5));
+}
 
-.header-meta { color: var(--muted); font-size: 0.8rem; }
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+#refresh-badge { display: inline-flex; align-items: center; gap: 0.45rem; }
+
+.refresh-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+.logout-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.logout-btn:hover {
+  opacity: 1;
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface2);
+}
 
 /* ---- Main content ---- */
 main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
@@ -120,6 +225,12 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
   border-left: 4px solid var(--muted);
   border-radius: 6px;
   padding: 1rem;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.sensor-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
 
 .sensor-card.batt-ok   { border-left-color: var(--ok); }
@@ -254,7 +365,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
 button {
   background: var(--accent);
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #fff;
   cursor: pointer;
   font-family: inherit;
@@ -262,7 +373,7 @@ button {
   font-weight: 600;
   padding: 0.45rem 1.1rem;
   align-self: flex-end;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, transform 0.1s;
 }
 
 button:hover { opacity: 0.85; }

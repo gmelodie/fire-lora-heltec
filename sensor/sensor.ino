@@ -5,6 +5,7 @@
 #include <SSD1306Wire.h>
 #include <EEPROM.h>
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "settings.h"
 
 /* =========================================================
