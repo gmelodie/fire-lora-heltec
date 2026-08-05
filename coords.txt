@@ -1,0 +1,8 @@
+gw: -21.979322, -47.883435
+sensor 3: 21°58'44.3"S 47°53'02.1"W (may 9-23) not found?
+
+A: apr 28-30: -21,9792439, -47,8843463 (has camera battery info)
+B: apr 28-30: -21,9793505, -47,8841408 (does not have cam battery info)
+C: may 19-24: -21,9783096, -47,8844080
+D: sensor 67  -21.979062,-47.884062
+E: sensor 222 21°58'45.8"S 47°53'03.0"W

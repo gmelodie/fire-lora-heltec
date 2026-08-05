@@ -1,0 +1,370 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage[utf8]{inputenc}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{tikz}
+\usepackage{fontawesome5}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds, calc}
+\usepackage{placeins}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\bottomfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.80}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\dblfloatpagefraction}{0.80}
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{6}
+\setcounter{dbltopnumber}{4}
+
+\definecolor{cNode}{HTML}{0072B2}
+\definecolor{cGw}{HTML}{D55E00}
+\definecolor{cCloud}{HTML}{009E73}
+
+% --- change marking -------------------------------------------------
+% The build script defines DIFFMODE for the review copy. In the clean
+% copy both markers are transparent, so pagination is the real one.
+\ifdefined\DIFFMODE
+  \usepackage[most]{tcolorbox}
+  \definecolor{DiffOrange}{HTML}{EB6834}
+  \newtcolorbox{changed}{breakable, enhanced, colback=DiffOrange!13,
+    colframe=DiffOrange!13, boxrule=0pt, arc=0pt, left=2pt, right=2pt,
+    top=1pt, bottom=1pt, before skip=2pt, after skip=2pt, parbox=false}
+  \newcommand{\ch}[1]{\textcolor{DiffOrange}{#1}}
+\else
+  \newenvironment{changed}{}{}
+  \newcommand{\ch}[1]{#1}
+\fi
+% --------------------------------------------------------------------
+
+\begin{document}
+
+\title{A Low-Cost LoRa-Based Environmental Monitoring System for Wildfire-Prone Areas in the Brazilian Savanna}
+
+\author{\IEEEauthorblockN{Gustavo Blois}
+\IEEEauthorblockA{\textit{ICMC - USP} \\
+\textit{University of São Paulo}\\
+São Carlos, Brazil \\
+gustavobloisrr@usp.br}
+\and
+\IEEEauthorblockN{Gabriel Cruz}
+\IEEEauthorblockA{\textit{ICMC - USP} \\
+\textit{University of São Paulo}\\
+São Carlos, Brazil \\
+gabriel.melo.cruz@usp.br}
+\and
+\IEEEauthorblockN{Kalinka Branco}
+\IEEEauthorblockA{\textit{ICMC - USP} \\
+\textit{University of São Paulo}\\
+São Carlos, Brazil \\
+kalinka@icmc.usp.br}
+}
+
+\maketitle
+
+\begin{abstract}
+Human-induced wildfires have become an increasingly significant concern in the Brazilian Savanna in recent years. This work presents a low-cost, real-world deployed LoRa-based environmental monitoring system designed for wildfire-prone areas in the Brazilian Savanna. \ch{Five field and indoor campaigns between April and July 2026 produced 522 deployment packets, evaluated against an INMET reference station 120\,m from the gateway. Delivery reached 99.6\% to 100\% at received powers down to $-127$\,dBm, and a node ran 9.2 days on a 500\,mAh cell at an average draw of 1.51\,mA. Fire danger indices computed from the node, from the reference station and from two public gridded products diverge by up to two danger classes: a reanalysis product missed a 13.8\,mm rain event and held its Monte Alegre index in the wrong class for a week. We further identify a daily condensation cycle inside the sensor enclosure that biases relative humidity by 24 percentage points at the hour the index samples. The results show that a low-cost node can support operational fire danger assessment, and that its accuracy is limited by enclosure design rather than by the sensing element.}
+\end{abstract}
+
+\begin{IEEEkeywords}
+LoRa, LPWAN, environmental monitoring, wildfire detection, Brazilian Savanna, Cerrado, low-power IoT
+\end{IEEEkeywords}
+
+\section{Introduction}
+The Brazilian Savanna, or Cerrado, hosts a rich diversity of endemic flora and fauna. It is a fire-adapted ecosystem, and natural burning plays an essential ecological role \cite{coutinho_ecological_1982}. The same characteristic leaves it vulnerable to anthropogenic and illegal wildfires \cite{pivello_understanding_2021}. In 2024 the Atlantic Forest and the Amazon reached record burned area, and the Savanna remained among the most affected regions \cite{bello_carvalho_brazil_2025}.
+
+LoRa (Long Range) is among the most prominent LPWAN (Low-Power Wide-Area Network) technologies for environmental monitoring, owing to its scalability and robustness to interference \cite{aloysaugustinStudyLoRaLong2016}. It has been applied to air quality monitoring \cite{cunha_arquitetura_2024}, agricultural irrigation \cite{caetano_low-cost_2025}, earthquake response \cite{boccadoroQuakeSenseLoRacompliantEarthquake2019}, flood monitoring \cite{mousavi_design_2021} and underground process monitoring \cite{ebiSynchronousLoRaMesh2019}.
+
+The literature on LoRa-based wildfire risk monitoring nonetheless shows four recurring limitations. Validation rests mainly on simulation or laboratory experiments, and little is reported on node behaviour under field exposure. Our earlier study of multi-hop LoRa in this biome shares that limitation: it combines simulated relay topologies with single-hop range tests, not a sustained deployment \cite{cruz_multihop_2025}. Deployments concentrate in temperate and Mediterranean environments, leaving the Brazilian Savanna and its pronounced dry season \cite{coutinho_ecological_1982} underexplored. Energy autonomy is usually projected from datasheet figures rather than measured in situ. And, to the best of our knowledge, the link between low-cost deployments and the fire-danger indices used by Brazilian forest management agencies remains largely unexamined.
+
+\begin{changed}
+This paper addresses these gaps through a pilot deployment in a Brazilian Savanna preservation area at the Federal University of São Carlos (UFSCar), built entirely from off-the-shelf components. Our contributions are fourfold. We characterize link quality across five campaigns, where two identically configured nodes 71\,m and 76\,m from the gateway differed by 18\,dB. We report an in-situ energy measurement over a full discharge curve, giving 1.51\,mA and 13.8 days from a 500\,mAh cell. We compute four Brazilian fire danger indices from the deployed node, from a reference station 120\,m away and from two public gridded products, the ERA5 reanalysis \cite{hersbach_era5_2020} and NASA's Prediction of Worldwide Energy Resources (POWER) \cite{nasa_power}. And we measure a daily condensation cycle inside the enclosure that moves the reported fire danger two classes low.
+\end{changed}
+
+\begin{figure*}[!t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, rounded corners=3pt, line width=1pt, align=center,
+              minimum width=3.5cm, minimum height=2.0cm, inner sep=6pt},
+  hdr/.style={font=\small\bfseries},
+  lbl/.style={font=\scriptsize, align=center},
+  arr/.style={-{Stealth[length=2.2mm]}, line width=0.9pt},
+]
+
+% ---------- Sensor node ----------
+\node[box, draw=cNode, fill=cNode!7,
+      label={[hdr, text=cNode]above:\ch{A. Sensor Nodes}}] (node)
+  {{\Large\textcolor{cNode}{\faMicrochip}}\\[3pt]
+   ESP32 Heltec V3\\[1pt]
+   {\scriptsize\textcolor{cNode}{\faThermometerHalf}\; BME280 (I\textsuperscript{2}C)}\\[1pt]
+   {\scriptsize\textcolor{cNode}{\faBatteryFull}\; 500\,mAh LiPo}};
+
+% ---------- Gateway ----------
+\node[box, draw=cGw, fill=cGw!7, right=4.2cm of node,
+      label={[hdr, text=cGw]above:\ch{B. LoRa Gateway}}] (gw)
+  {{\Large\textcolor{cGw}{\faBroadcastTower}}\\[3pt]
+   ESP32 Heltec V3\\[1pt]
+   {\scriptsize\textcolor{cGw}{\faWifi}\; LoRa RX $\rightarrow$ WiFi}};
+
+% ---------- Cloud ----------
+\node[box, draw=cCloud, fill=cCloud!7, right=3.8cm of gw,
+      label={[hdr, text=cCloud]above:\ch{C. HTTPS Cloud Server}}] (cloud)
+  {{\Large\textcolor{cCloud}{\faDatabase}}\\[3pt]
+   PostgreSQL\\[1pt]
+   {\scriptsize REST API + dashboard}};
+
+% ---------- LoRa radio link ----------
+\coordinate (tx) at ($(node.east)+(0.15,0)$);
+\foreach \r in {0.30,0.50,0.70,0.90}
+  \draw[cNode, line width=0.9pt] ([shift=(-38:\r)]tx) arc (-38:38:\r);
+\fill[cNode] (tx) circle (1.5pt);
+
+\coordinate (rx) at ($(gw.west)-(0.15,0)$);
+\foreach \r in {0.30,0.50,0.70}
+  \draw[cGw, line width=0.9pt] ([shift=(142:\r)]rx) arc (142:218:\r);
+
+\node[lbl, above] at ($(node.east)!0.5!(gw.west)+(0,0.6)$)
+  {\textcolor{cNode}{\textbf{LoRa}}\\915\,MHz, BW 125\,kHz\\SF11, CR 4/5, 16\,dBm};
+\node[lbl, below] at ($(node.east)!0.5!(gw.west)-(0,0.6)$)
+  {$\approx$\,85\,m\\one uplink / 90\,min};
+
+% ---------- HTTPS, bidirectional ----------
+\draw[arr, cGw] ($(gw.east)+(0,0.28)$) -- node[lbl, above=1pt]
+  {\textcolor{cGw}{\faLock\; \textbf{HTTPS POST}}\\{\scriptsize $T$, RH, $p$, battery, RSSI}}
+  ($(cloud.west)+(0,0.28)$);
+\draw[arr, cCloud] ($(cloud.west)-(0,0.28)$) -- node[lbl, below=1pt]
+  {\textcolor{cCloud}{\scriptsize 200 OK}} ($(gw.east)-(0,0.28)$);
+
+\end{tikzpicture}
+\caption{Architecture of the LoRa-based environmental monitoring network.}
+\label{fig:architecture}
+\end{figure*}
+\section{Methodology}
+The proposed system consists of sensor nodes deployed in the monitored area and a central gateway that receives and forwards the collected data to a cloud server (Fig.~\ref{fig:architecture}).
+
+\begin{figure*}[!t]
+\centering
+\begin{subfigure}[c]{.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{photos/sensor-enclosure.pdf}
+\caption{Sensor node inside the open enclosure.}
+\label{fig:sensor-enclosure}
+\end{subfigure}
+\hfill
+\begin{subfigure}[c]{.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{photos/sensor-mounted.pdf}
+\caption{Node deployed on a tree.}
+\label{fig:sensor-mounted}
+\end{subfigure}
+\caption{Sensor node hardware and deployment. (a) ESP32 Heltec V3, BME280, and 500\,mAh LiPo battery housed in a waterproof enclosure modified with an air vent permitting ambient temperature and humidity measurement. (b) Node installed under vegetation cover in the study area.}
+\label{fig:sensor}
+\end{figure*}
+
+\subsection{Sensor Nodes}
+The sensor nodes deployed throughout the Brazilian Savanna preservation area are powered by 500~mAh LiPo batteries and built around an ESP32 LoRa Heltec V3 microcontroller \cite{heltec_lora_datasheet}, interfaced with a BME280 sensor \cite{bosch_bme280_datasheet} for temperature, relative humidity, and atmospheric pressure measurements.
+
+Each node is housed in a waterproof enclosure, modified with a vent that permits the passage of air (Fig.~\ref{fig:sensor}). The vent is intended to allow accurate measurement of ambient temperature and relative humidity while securing the circuitry from water ingress and condensation damage. Section~\ref{sec:limitations} reports how far that intent held in the field.
+
+\subsection{LoRa Gateway}
+The gateway uses the same ESP32 LoRa Heltec V3 platform. It receives the data frames and forwards them to the cloud server over HTTPS via WiFi.
+
+\subsection{\ch{HTTPS} Cloud Server}
+The cloud server exposes an authenticated HTTPS REST API for ingestion and for querying stored readings, each request carrying a pre-shared key. Data is stored in a PostgreSQL database on the same host, which also serves a dashboard for operational monitoring.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{graphics/deployment_map.pdf}
+\caption{\ch{Deployment over satellite imagery. Each marker is one node position, labelled with its campaign and its distance to the gateway, and filled by the mean received power of that run. The two F3 nodes, N4 at 71\,m and N5 at 76\,m, sit almost equidistant from the gateway yet differ by 18\,dB. Imagery: Google.}}
+\label{fig:map}
+\end{figure}
+
+\subsection{Study Site and Reference Instrumentation}
+\begin{changed}
+All deployments took place in a Brazilian Savanna preservation area on the UFSCar campus (Fig.~\ref{fig:map}). The gateway remained at a fixed position ($-21.979322$, $-47.883435$) throughout. INMET automatic weather station A711 stands 120\,m from the gateway (Fig.~\ref{fig:map}), at the same elevation, and publishes hourly precipitation, temperature, dew point, relative humidity, wind and radiation.
+\end{changed}
+
+\subsection{Campaign Design}
+\begin{changed}
+Five campaigns ran between April and July 2026. Table~\ref{tab:campaigns} lists, for each campaign, the spreading factor (SF), the transmit power (TX), the interval between transmissions (Int.), the enclosure type (Encl.), and the nodes deployed with their distance to the gateway. For the two indoor controls that last column gives the separation from the gateway and whether an internal wall stood between node and gateway. Three field campaigns (F1, F2, F3) placed nodes in the preservation area, 2\,m above ground, at the positions shown in Fig.~\ref{fig:map}. Two indoor campaigns (I1, I2) placed the same hardware a few metres from the gateway with the radio configuration unchanged, giving a near-field control for the field campaign that shares its configuration.
+\end{changed}
+
+\begin{table}[!t]
+\centering
+\caption{\ch{Campaign configurations. Distance is node to gateway. TX in dBm, Int.\ in minutes. All nodes used 500\,mAh LiPo cells.}}
+\label{tab:campaigns}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llccccl}
+\hline
+\textbf{Exp} & \textbf{Window} & \textbf{SF} & \textbf{TX} & \textbf{Int.} & \textbf{Encl.} & \textbf{Nodes and distance} \\
+\hline
+F1 & 28--30 Apr & 7  & 14 & 90 & sealed & N1 72.8\,m; N2 94.4\,m \\
+I1 & 1--3 May   & 7  & 14 & 90 & sealed & indoor, 4\,m, through 1 wall \\
+I2 & 15 May     & 10 & 16 & 90 & sealed & indoor, 2\,m, line of sight \\
+F2 & 19--24 May & 10 & 16 & 60 & sealed & N3 150.8\,m \\
+F3 & 8--18 Jul  & 11 & 16 & 60 & vented & N4 70.8\,m; N5 75.8\,m \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Fire Danger Indices and Public Baselines}
+\begin{changed}
+We compute four fire danger indices used in Brazilian forest management, all sampling their inputs at 13:00 local time, where $H$ is relative humidity in percent and $T$ is air temperature in $^\circ$C. The Monte Alegre Formula (FMA) was the first fire danger index developed in Brazil \cite{soares_1972} and remains in operational use \cite{torres_2008}. It accumulates the reciprocal of relative humidity over $n$ consecutive days without rain,
+\begin{equation}
+\mathrm{FMA} = \sum_{i=1}^{n} \frac{100}{H_i} .
+\label{eq:fma}
+\end{equation}
+Being cumulative, (\ref{eq:fma}) carries rainfall restrictions \cite{torres_2008}: the accumulated value is reduced by 30\%, 60\% or 80\% for daily rainfall of 2.5--4.9, 5.0--9.9 and 10.0--12.9\,mm, and reset to zero above 12.9\,mm. The Ångström index \cite{angstrom_1942} is not cumulative and combines humidity with temperature,
+\begin{equation}
+B = \frac{H}{20} + \frac{27 - T}{10} ,
+\label{eq:angstrom}
+\end{equation}
+and is read inversely, lower values indicating greater danger.
+
+The logarithmic Telicyn index \cite{torres_2008} accumulates the dew point depression, $T_d$ being the dew point in $^\circ$C,
+\begin{equation}
+I = \sum_{i=1}^{n} \log_{10}\left(T_i - T_{d,i}\right) ,
+\label{eq:telicyn}
+\end{equation}
+and resets on rainfall of 2.5\,mm or more. The Nesterov index \cite{nesterov_1949} accumulates the product of saturation deficit and temperature,
+\begin{equation}
+G = \sum_{i=1}^{n} d_i \, T_i , \qquad d = E\left(1 - \frac{H}{100}\right) ,
+\label{eq:nesterov}
+\end{equation}
+where $d$ is the saturation deficit and $E$ the saturation vapour pressure, both in millibars, under its own rainfall restriction \cite{torres_2008}.
+
+The node measures temperature and humidity but carries neither a rain gauge nor an anemometer, so every cumulative index mixes node measurements with public rainfall data, taken here from A711, while Ångström alone runs entirely on node measurements. All four are also computed from three further sources: A711 at 120\,m; ERA5 on its native $0.25^\circ$ grid, approximately 28\,km, through the Open-Meteo archive \cite{openmeteo_2023}; and NASA POWER at roughly 50\,km, whose grid cell places the site 204\,m too low.
+
+Cumulative indices depend on history preceding the first measurement, so we seed each node accumulator with the A711 value from the day before the node began reporting.
+\end{changed}
+
+\section{Results}
+\label{sec:results}
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{graphics/link_budget.pdf}
+\caption{\ch{Mean received power against distance for every run, with each run's range as a vertical bar. Hollow squares are indoor controls sharing the radio configuration of the field campaign in the same colour. The dashed line is the free-space reference of (\ref{eq:fspl}). N4 and N5 sit 70.8\,m and 75.8\,m from the gateway under one configuration, yet differ by 18\,dB where free-space loss predicts 0.6\,dB.}}
+\label{fig:link}
+\end{figure}
+
+\begin{changed}
+The five analysed campaigns produced 522 deployment packets (Table~\ref{tab:runs}).
+
+\subsection{Link Quality and Delivery}
+Fig.~\ref{fig:link} plots received power against distance. The dashed reference is the Friis free-space model \cite{friis_1946},
+\begin{equation}
+P_r = P_t + G_t + G_r - 20\log_{10} d - 20\log_{10} f - 32.44 ,
+\label{eq:fspl}
+\end{equation}
+with $P$ in dBm, gains $G$ in dBi, $d$ in kilometres and $f$ in megahertz, plotted for 16\,dBm at 915\,MHz with 2\,dBi at each end. Field links fall 40 to 70\,dB below that reference while the indoor controls sit close to it. N4 at 70.8\,m averaged $-106.9$\,dBm against $-89.2$\,dBm for N5 at 75.8\,m, same campaign and configuration, and the canopy differs between their positions (Fig.~\ref{fig:map}). Free-space loss grows by 0.6\,dB across that range difference, so distance accounts for almost none of the 18\,dB gap. The positions differ in canopy cover (Fig.~\ref{fig:map}), but antenna orientation, mounting and terrain were not controlled, so the cause is not isolated here.
+
+Unlike received power, delivery rates were near perfect. Every run delivered between 99.6\% and 100\% of its packets, including the run whose weakest frame arrived at $-127$\,dBm; N4 lost one packet out of 223 across 9.2 days. A link that is weak by received power therefore stayed reliable in practice, consistent with the SF11 sensitivity floor lying below the received level. This measures the LoRa link while the gateway is operating, not end-to-end availability.
+
+\end{changed}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{graphics/battery_discharge.pdf}
+\caption{\ch{Reported battery level during F3. N4 traversed the full discharge curve over 221.4\,h, giving 0.303\,\%/h, an extrapolated lifetime of 330\,h (13.8 days) from a full charge and an average draw of 1.51\,mA on a 500\,mAh cell.}}
+\label{fig:battery}
+\end{figure}
+\subsection{Power Consumption}
+\begin{changed}
+N4 is the only node whose battery traversed the full discharge curve, falling from 69\% to 2\% over 221.4\,h (Fig.~\ref{fig:battery}): 0.303\%/h, or 330\,h (13.8 days) from a full charge at an average 1.51\,mA on a 500\,mAh cell. Rates are not comparable between runs, since the reported percentage is a lookup from voltage against a nonlinear curve; N3 moved only from 74\% to 68\% across 109\,h because it sat on the flat plateau throughout.
+
+\end{changed}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{graphics/condensation_cycle.pdf}
+\caption{\ch{Mean dew point excess of each node over the co-located station, by local hour. Solar heating changes temperature and humidity but cannot change dew point, so an excess above ambient requires liquid water inside the case. The sign reversal between night and morning rules out a static siting difference.}}
+\label{fig:condensation}
+\end{figure}
+\subsection{Enclosure Condensation}
+\label{sec:condensation}
+\begin{changed}
+Dew point is a more appropriate metric than relative humidity for this comparison: solar heating of an enclosure raises temperature and lowers relative humidity, but it cannot change the dew point of the air inside. Fig.~\ref{fig:condensation} plots the mean dew point excess over A711 by local hour. Both nodes read drier than ambient through the night, by 4.0 to 5.3\,$^\circ$C for N5, and both reverse after sunrise, N5 reaching $+13.9$\,$^\circ$C at 09:00 local.
+
+N5 read both warmer and damper than the station at the same hours: 2.6\,$^\circ$C above it on average between 09:00 and 16:00, reaching $+8.0$\,$^\circ$C, while holding 21.5\,g/kg of water against 8.7\,g/kg. Shaded vegetation would be expected to read cooler, so the pattern is consistent with water evaporating inside a sun-warmed case and condensing again overnight. N3, under closed canopy, ran 0.2\,$^\circ$C cooler than the station and showed a 4\,$^\circ$C peak-to-peak excess against 19\,$^\circ$C for N5. Season, siting and enclosure design all differ between the two nodes, and only one node ran per configuration, so these measurements do not attribute the difference; confirming the mechanism would need instrumentation inside the case.
+
+FMA samples relative humidity at 13:00 local, inside the contaminated window. At 14:00 local on 9 July N5 reported 58.0\% against 34\% at A711, a 24 percentage point wet bias. Because FMA accumulates $100/H$, a wet bias lowers the danger score, so an uncorrected node under-reports fire danger at precisely the hour the index samples.
+\end{changed}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{graphics/fma_season.pdf}
+\caption{\ch{Monte Alegre Formula, 1 April to 31 July 2026, from A711, ERA5 and NASA POWER, with the six days a node reported at 13:00 local. Light columns mark the F2 and F3 campaigns, darker columns the sub-periods with a working humidity sensor. On 18 May A711 measured 13.8\,mm and the index resets to zero, while ERA5 recorded 5.5\,mm and read 5.9.}}
+\label{fig:season}
+\end{figure*}
+
+\subsection{Fire Danger Indices Against Public Data}
+\begin{changed}
+Fig.~\ref{fig:season} shows FMA across the whole record. ERA5 and NASA POWER each diverge from the co-located station, in different ways. ERA5 under-measures the rainfall that resets the index. On 18 May A711 recorded 13.8\,mm, which exceeds the reset threshold and returns the station index to zero; ERA5 recorded 5.5\,mm over its $0.25^\circ$ cell, enough only for a partial reduction, and read 5.9, the \emph{Medium} class against \emph{None}. The gap persisted for a week: on 22 May ERA5 read 9.3 against 4.6 at the station. NASA POWER instead reads too warm, its grid cell sitting 204\,m below the true elevation: its 13:00 temperature ran 2.5 to 8\,$^\circ$C above the station and its FMA reached 94 against 55.
+
+Fig.~\ref{fig:ladder} compares the Ångström index on every day the node reported; it is not cumulative and so needs no shared rainfall history. On 9 July the co-located station read 2.31 (\emph{High} danger) against 3.32 (\emph{Low}) for the uncorrected node, two classes apart, while NASA POWER read 1.64 and ERA5 2.61. Removing the measured dew point offset moves the node to 2.30, though that calibration is derived against A711 and the agreement is therefore not independent.
+
+The indices differ in how much of this they reveal. During F2 the node tracked the station within 0.8 on FMA on all five days, despite a 22 percentage point humidity bias on 21 May. Both series share the same rainfall record, and therefore the same resets. Ångström exposed the bias immediately. Nesterov diverged furthest: on 21 May ERA5 read 1380 against 199 at the station, three danger classes apart, where FMA differed by one. Telicyn agreed across all four sources on 9 July, every one reading \emph{High}.
+\end{changed}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{graphics/index_ladder.pdf}
+\caption{\ch{\AA ngstr\"om index by source on each day a node reported. The index is not cumulative, so the sources need no shared rainfall history; lower values mean greater danger and shaded bands mark the classes. On 9 July the co-located station reads High while the uncorrected node reads Low, two classes apart, from enclosure condensation.}}
+\label{fig:ladder}
+\end{figure*}
+
+\subsection{Limitations}
+\label{sec:limitations}
+\begin{changed}
+Water ingress ended two campaigns: N2 reported exactly 100.00\% relative humidity on all 61 outdoor packets before losing its I\textsuperscript{2}C bus, and N3 stopped transmitting with its battery at 68\% after its internal humidity rose every day to a daily mean of 97.3\%. Sealed and vented enclosures both admitted water. Two further faults were mechanical: N1 returned a fixed $-143.99$\,$^\circ$C, and N4 never detected its BME280, so the campaign with the best radio and power data produced no environmental data.
+
+A deployment on 3 July stored no data at all, yet database row identifiers are contiguous across the gap. The gateway acknowledges a frame before forwarding it and keeps no buffer, so the nodes transmitted on schedule, received acknowledgements and slept while every reading was dropped: end-to-end availability of 0\% despite a working LoRa link.
+
+Received power above roughly $-25$\,dBm approaches the receiver compression point, so the indoor controls are a qualitative reference rather than a calibrated path-loss anchor. The node dataset comprises five days in the wet season and one in the dry season at 13:00 local, enough to demonstrate divergence but not to characterise it across a season.
+\end{changed}
+
+\begin{table}[!t]
+\centering
+\caption{\ch{Per-run results. PDR is post-retry. Sensor counts readings with all three environmental fields valid. RSSI is the run mean in dBm. Battery is start--end in percent.}}
+\label{tab:runs}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrr}
+\hline
+\textbf{Exp} & \textbf{Node} & \textbf{Pkts} & \textbf{PDR} & \textbf{RSSI} & \textbf{Batt.} & \textbf{Sensor} \\
+\hline
+F1 & N1 & 33  & 100\,\%  & $-61.4$  & 91--0   & 0/33 \\
+F1 & N2 & 33  & 100\,\%  & $-104.6$ & 98--45  & 0/33 \\
+I1 & N1 & 37  & 100\,\%  & $-21.4$  & 57--52  & 0/37 \\
+I1 & N2 & 37  & 100\,\%  & $-27.5$  & 34--0   & 0/37 \\
+I2 & N3 & 10  & 100\,\%  & $-14.5$  & 93--89  & 10/10 \\
+F2 & N3 & 113 & 100\,\%  & $-112.5$ & 74--68  & 113/113 \\
+F3 & N4 & 223 & 99.6\,\% & $-106.9$ & 69--2   & 0/223 \\
+F3 & N5 & 36  & 100\,\%  & $-89.2$  & 15--4   & 36/36 \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+\begin{changed}
+This work presented a wildfire monitoring system built from low-cost, off-the-shelf components and evaluated across five campaigns in the Brazilian Savanna. The LoRa link proved reliable where it was expected to be marginal, delivering 99.6\% to 100\% of packets down to $-127$\,dBm.
+
+Two findings matter for operational use. The Monte Alegre index resets on discrete rainfall thresholds. ERA5 smooths convective rainfall, so it missed a 13.8\,mm event and held the index in the wrong danger class for a week. NASA POWER places the site 204\,m too low and over-reported danger throughout.
+
+At the hour the index samples, a node read 24 percentage points wetter than the station 76\,m away. That moved the reported danger two classes low, in a pattern consistent with condensation inside the enclosure. Furthermore, the results suggest that enclosure design, gateway store-and-forward and node identity management have more impact on data quality than radio range. Future work should run sealed and vented cases at a single position to separate enclosure design from siting, and distribute nodes across the vegetation formations of the biome \cite{ribeiro_walter_fitofisionomias_1998} to test how far a single-node estimate generalises.
+\end{changed}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references,manual-references}
+
+\end{document}
