@@ -103,13 +103,23 @@ void maintainWiFi()
    HTTPS
    ========================================================= */
 
+void configureTls(WiFiClientSecure &client)
+{
+#ifdef API_ROOT_CA
+  client.setCACert(API_ROOT_CA);
+#else
+  // Without a pinned certificate the API password travels over an unverified TLS session.
+  client.setInsecure();
+#endif
+}
+
 bool httpsPost(String url, String payload)
 {
   if (!wifiConnected)
     return false;
 
   WiFiClientSecure client;
-  client.setInsecure();
+  configureTls(client);
 
   HTTPClient https;
 
@@ -128,7 +138,7 @@ bool httpsPost(String url, String payload)
   Serial.println(code);
 
   https.end();
-  return code > 0;
+  return code >= 200 && code < 300;
 }
 
 bool checkApi()
@@ -139,7 +149,7 @@ bool checkApi()
   for (int attempt = 0; attempt < 3; attempt++)
   {
     WiFiClientSecure client;
-    client.setInsecure();
+    configureTls(client);
 
     HTTPClient https;
     if (!https.begin(client, API_URL "/readings/latest"))
@@ -154,7 +164,7 @@ bool checkApi()
 
     Serial.printf("API check attempt %d: %d\n", attempt + 1, code);
 
-    if (code > 0)
+    if (code >= 200 && code < 300)
       return true;
 
     showPacket("API ERR", String(code), "Retrying...");
@@ -234,6 +244,30 @@ void handlePing(String msg)
   showPacket("PING", "Sensor " + String(id), "Responded");
 }
 
+// A radio packet is unauthenticated input: only a plain number may reach the JSON body.
+String jsonNum(const String &v)
+{
+  if (v.length() == 0 || v.length() > 12)
+    return "null";
+
+  bool seenDigit = false;
+  bool seenDot = false;
+  for (unsigned int i = 0; i < v.length(); i++)
+  {
+    char c = v[i];
+    if (c >= '0' && c <= '9')
+      seenDigit = true;
+    else if (c == '-' && i == 0)
+      continue;
+    else if (c == '.' && !seenDot)
+      seenDot = true;
+    else
+      return "null";
+  }
+
+  return seenDigit ? v : "null";
+}
+
 String handleData(String msg, int16_t rssi)
 {
   int p1 = msg.indexOf('|');
@@ -260,13 +294,12 @@ String handleData(String msg, int16_t rssi)
       "Sensor " + String(id),
       "T " + temp + " H " + hum,
       "B " + batt + " RSSI " + String(rssi));
-  auto jsonVal = [](const String &v) -> String { return v == "nil" ? "null" : v; };
   return "{\"sensor_id\":\"" + String(id) + "\","
-         "\"temperature\":" + jsonVal(temp) + ","
-         "\"humidity\":" + jsonVal(hum) + ","
-         "\"pressure\":" + jsonVal(pres) + ","
-         "\"battery\":" + jsonVal(batt) + ","
-         "\"camera_battery\":" + jsonVal(camBatt) + ","
+         "\"temperature\":" + jsonNum(temp) + ","
+         "\"humidity\":" + jsonNum(hum) + ","
+         "\"pressure\":" + jsonNum(pres) + ","
+         "\"battery\":" + jsonNum(batt) + ","
+         "\"camera_battery\":" + jsonNum(camBatt) + ","
          "\"counter\":" + String(counter) + ","
          "\"rssi\":" + String(rssi) + "}";
 }
@@ -316,8 +349,9 @@ void setup()
   if (!initRadio())
   {
     showPacket("ERROR", "LoRa Failed", "");
-    while (true)
-      ;
+    Serial.println("LoRa init failed, restarting");
+    delay(2000);
+    esp_restart();
   }
   Serial.println("Radio OK");
 

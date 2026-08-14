@@ -85,7 +85,10 @@ function buildSensorCard(r) {
 
   const header = document.createElement('div');
   header.className = 'card-header';
-  header.innerHTML = `Sensor ${r.sensor_id} <span>${relativeTime(r.timestamp)}</span>`;
+  header.append(`Sensor ${r.sensor_id} `);
+  const age = document.createElement('span');
+  age.textContent = relativeTime(r.timestamp);
+  header.appendChild(age);
   card.appendChild(header);
 
   const metrics = [
@@ -101,7 +104,13 @@ function buildSensorCard(r) {
   for (const [label, value] of metrics) {
     const row = document.createElement('div');
     row.className = 'metric-row';
-    row.innerHTML = `<span class="metric-label">${label}</span><span class="metric-value">${value}</span>`;
+    const labelEl = document.createElement('span');
+    labelEl.className = 'metric-label';
+    labelEl.textContent = label;
+    const valueEl = document.createElement('span');
+    valueEl.className = 'metric-value';
+    valueEl.textContent = value;
+    row.append(labelEl, valueEl);
     card.appendChild(row);
   }
 

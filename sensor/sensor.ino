@@ -7,6 +7,7 @@
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "settings.h"
+#include "sensor_math.h"
 
 /* =========================================================
    Display
@@ -34,11 +35,17 @@ unsigned long wakeTime = 0;
 
 bool screenOn = false;
 unsigned long screenTimer = 0;
+bool displayAvailable = false;
 
 volatile bool receivedFlag = false;
 int retryCount = 0;
 
 bool bmeFound = false;
+
+// recompile.sh --camera passes -DCAMERA
+#if defined(CAMERA) && !defined(CAMERA_BATTERY_AVAILABLE)
+#define CAMERA_BATTERY_AVAILABLE 1
+#endif
 
 #ifndef CAMERA_BATTERY_AVAILABLE
 #define CAMERA_BATTERY_AVAILABLE 0
@@ -51,6 +58,7 @@ RTC_DATA_ATTR int8_t cachedIsV3 = -1;   // -1 = unknown, 0 = V3.2, 1 = V3
 RTC_DATA_ATTR int filteredBatteryPct = -1;
 RTC_DATA_ATTR int lastGoodBatteryPct = 100;
 int16_t deployRSSI = 0;
+unsigned long deployStart = 0;
 unsigned long lastDeployPongTime = 0;
 unsigned long lastDeployPing = 0;
 unsigned long lastDeployDisplay = 0;
@@ -76,11 +84,28 @@ void VextON() {
   digitalWrite(Vext, LOW);
 }
 
+// Release the pin: the board pull-up turns the P-FET off and drops the Vext rail.
+void VextOFF() {
+  pinMode(Vext, INPUT);
+}
+
+void initDisplay() {
+  if (displayAvailable) return;
+  pinMode(RST_OLED, OUTPUT);
+  digitalWrite(RST_OLED, LOW);
+  delay(20);
+  digitalWrite(RST_OLED, HIGH);
+  display.init();
+  display.setFont(ArialMT_Plain_10);
+  displayAvailable = true;
+}
+
 /* =========================================================
    Display helper
    ========================================================= */
 
 void showMessage(String l1, String l2 = "") {
+  if (!displayAvailable) return;
   display.displayOn();
   display.clear();
   display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -94,6 +119,7 @@ void showMessage(String l1, String l2 = "") {
 }
 
 void showDeployStatus() {
+  if (!displayAvailable) return;
   if (cachedBattery < 0 || millis() - lastBatteryUpdate > 30000) {
     cachedBattery = readBattery();
     lastBatteryUpdate = millis();
@@ -151,11 +177,6 @@ int readCameraBattery() { return readAdcBattery(CAMERA_BATTERY_PIN); }
 // then IIR-smooth across calls. Avoids the noise amplification of averaging per-sample
 // percentages through a non-linear interpolation.
 int readBattery() {
-  static const uint16_t OCV[] = {
-    4190, 4120, 4050, 4020, 3990, 3940, 3890, 3845, 3800, 3760,
-    3720, 3675, 3630, 3580, 3530, 3475, 3420, 3360, 3300, 3200, 3100
-  };
-  const int NUM_OCV = 21;
   const int N = NUM_ADC_SAMPLES;
 
   pinMode(ADC_CTRL_PIN, OUTPUT);
@@ -184,6 +205,7 @@ int readBattery() {
       : (int)analogReadMilliVolts(BATTERY_PIN);
     delay(5);
   }
+  digitalWrite(ADC_CTRL_PIN, LOW);
 
   for (int i = 1; i < N; i++) {
     int x = samples[i];
@@ -198,28 +220,11 @@ int readBattery() {
 
   uint32_t batMv = (uint32_t)(medPinMv * BATTERY_RATIO);
 
-  // Plausibility clamp. A real 1S LiPo lives in 3.0–4.2 V. Anything outside that is
-  // almost certainly an ADC glitch or wiring issue, and feeding it through the OCV
-  // interpolation would yield 0 % or 100 % nonsense. Return the last good value.
-  if (batMv < 2800 || batMv > 4400) {
+  int pct = ocvToPercent(batMv);
+  if (pct < 0) {
     Serial.printf("Heltec bat OOR isV3=%d med_pin_mv=%d bat_mv=%lu — keeping last=%d\n",
                   isV3, medPinMv, batMv, lastGoodBatteryPct);
     return lastGoodBatteryPct;
-  }
-
-  int pct;
-  if (batMv >= OCV[0]) pct = 100;
-  else if (batMv <= OCV[NUM_OCV - 1]) pct = 0;
-  else {
-    const int PCT_STEP = 100 / (NUM_OCV - 1);
-    pct = 0;
-    for (int j = 0; j < NUM_OCV - 1; j++) {
-      if (batMv >= OCV[j + 1]) {
-        pct = (NUM_OCV - j - 2) * PCT_STEP
-            + (int)((batMv - OCV[j + 1]) * PCT_STEP / (OCV[j] - OCV[j + 1]));
-        break;
-      }
-    }
   }
 
   if (filteredBatteryPct < 0) filteredBatteryPct = pct;
@@ -249,6 +254,7 @@ void loadSensorID() {
 }
 
 void saveSensorID() {
+  if (EEPROM.read(SENSOR_ID_ADDR) == sensorID) return;  // one flash write per hour otherwise
   EEPROM.write(SENSOR_ID_ADDR, sensorID);
   EEPROM.commit();
 }
@@ -267,9 +273,8 @@ bool initRadio() {
   int state = radio.begin(RX_FREQ_MHZ);
 
   if (state != RADIOLIB_ERR_NONE) {
-    Serial.print("Radio failed: ");
-    Serial.println(state);
-    while (true);
+    Serial.printf("Radio failed: %d\n", state);
+    return false;
   }
 
   radio.setSpreadingFactor(RX_SF);
@@ -289,8 +294,13 @@ bool initRadio() {
    ========================================================= */
 
 void deepSleep(uint32_t ms) {
-  display.displayOff();
+  if (displayAvailable) display.displayOff();
   radio.sleep();
+  digitalWrite(ADC_CTRL_PIN, LOW);
+  VextOFF();
+  Wire.end();
+  Wire1.end();
+  Serial.flush();
   esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
   esp_deep_sleep_start();
 }
@@ -385,7 +395,7 @@ void processPacket(String msg, int16_t rssi) {
     retryCount = 0;
     msgCounter++;
     if (!deployMode) {
-      if (firstNormalSend) {
+      if (firstNormalSend && displayAvailable) {
         firstNormalSend = false;
         screenTimeoutMs = 5000;
         display.displayOn();
@@ -428,6 +438,25 @@ void handleReceive() {
    Button
    ========================================================= */
 
+void enterDeployMode() {
+  deployMode = true;
+  deployStart = millis();
+  lastDeployPongTime = 0;
+  deployRSSI = 0;
+  lastDeployPing = 0;
+  lastDeployDisplay = millis();
+  cachedBattery = -1;
+  deployGwLost = false;
+}
+
+void exitDeployMode(String l1, String l2) {
+  deployMode = false;
+  pingBackoffStep = 0;
+  lastTx = 0;
+  firstNormalSend = true;
+  showMessage(l1, l2);
+}
+
 void handleButton() {
   static bool lastState = HIGH;
   static unsigned long pressStart = 0;
@@ -445,23 +474,16 @@ void handleButton() {
       // ignore (bounce)
     } else if (held < 1000) {
       // short press: toggle deploy mode
-      deployMode = !deployMode;
-      if (deployMode) {
-        lastDeployPongTime = 0;
-        deployRSSI = 0;
-        lastDeployPing = 0;
-        lastDeployDisplay = millis();
-        cachedBattery = -1;
-        deployGwLost = false;
+      initDisplay();  // a press is a person at the node: it is worth the screen
+      if (!deployMode) {
+        enterDeployMode();
         showMessage("Deploy Mode", "ON");
       } else {
-        pingBackoffStep = 0;
-        lastTx = 0;
-        firstNormalSend = true;
-        showMessage("Deploy Mode", "OFF");
+        exitDeployMode("Deploy Mode", "OFF");
       }
     } else {
       // long press: cycle sensor ID
+      initDisplay();
       sensorID++;
       if (sensorID > MAX_SENSORS) sensorID = 1;
       saveSensorID();
@@ -495,16 +517,11 @@ void setup() {
 
   delay(powerOn ? 1000 : 50);  // long serial settle only on power-on; cheap on timer wakes
 
-  VextON();
+  VextON();  // the external sensor rail, not only the OLED
   delay(100);
 
-  pinMode(RST_OLED, OUTPUT);
-  digitalWrite(RST_OLED, LOW);
-  delay(20);
-  digitalWrite(RST_OLED, HIGH);
-
-  display.init();
-  display.setFont(ArialMT_Plain_10);
+  // A timer wake leaves the OLED uninitialized and dark; nothing below may light it.
+  if (coldBoot || deployMode) initDisplay();
 
   if (coldBoot) {
     showMessage("Sensor Boot", "V3");
@@ -515,7 +532,7 @@ void setup() {
   analogReadResolution(12);
 
   pinMode(ADC_CTRL_PIN, OUTPUT);
-  digitalWrite(ADC_CTRL_PIN, HIGH);
+  digitalWrite(ADC_CTRL_PIN, LOW);  // readBattery() raises it around the samples only
   // Must be set explicitly; default attenuation varies between ESP32-S3 silicon revisions
   analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
 
@@ -526,14 +543,7 @@ void setup() {
 
   loadSensorID();
 
-  if (coldBoot) {
-    deployMode = true;
-    lastDeployPongTime = 0;
-    deployRSSI = 0;
-    lastDeployPing = 0;
-    cachedBattery = -1;
-    deployGwLost = false;
-  }
+  if (coldBoot) enterDeployMode();
 
   Wire1.begin(BME_SDA, BME_SCL);
   bmeFound = bme.begin(0x76, &Wire1);
@@ -571,7 +581,11 @@ void setup() {
     }
   }
 
-  initRadio();
+  // A dead radio must never keep the node awake: sleep and retry from a clean reset.
+  if (!initRadio()) {
+    Serial.printf("Sleeping %lu s before the next radio attempt\n", RADIO_FAIL_SLEEP_MS / 1000);
+    deepSleep(RADIO_FAIL_SLEEP_MS);
+  }
   radio.startReceive();
 
   lastTx = millis();
@@ -587,6 +601,11 @@ void loop() {
   handleButton();
 
   if (deployMode) {
+    if (millis() - deployStart >= DEPLOY_TIMEOUT_MS) {
+      Serial.println("Deploy timeout, resuming normal cycle");
+      exitDeployMode("Deploy timeout", "");
+      return;
+    }
     if (millis() - lastDeployDisplay >= 1000) {
       showDeployStatus();
       lastDeployDisplay = millis();
@@ -622,9 +641,9 @@ void loop() {
       lastTx = millis();
     }
     if (millis() > GATEWAY_SEARCH_MS) {
-      uint8_t step = min(pingBackoffStep, (uint8_t)MAX_BACKOFF_STEP);
-      uint32_t backoffMs = min(BACKOFF_BASE_MS << step, BACKOFF_MAX_MS);
-      pingBackoffStep = step + 1;
+      uint8_t step = pingBackoffStep;
+      uint32_t backoffMs = backoffDelayMs(step);
+      if (pingBackoffStep < MAX_BACKOFF_STEP) pingBackoffStep++;
       Serial.printf("Gateway not found, sleeping %lu s (step %u)\n", backoffMs / 1000, step);
       deepSleep(backoffMs);
     }
@@ -652,7 +671,7 @@ void loop() {
 
   if (gatewayFound && !waitingAck && !firstTx) {
     if (screenOn) return;
-    Serial.printf("AWAKE_S:%lu\n", (millis() - wakeTime) / 1000);
+    Serial.printf("AWAKE_MS:%lu\n", millis() - wakeTime);
     deepSleep(TX_INTERVAL);
   }
 }

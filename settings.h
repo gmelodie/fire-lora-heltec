@@ -69,10 +69,13 @@
 #define PING_INTERVAL_MS    2000UL
 #define GATEWAY_SEARCH_MS   10000UL  // give up and sleep if no pong within this window
 #define BACKOFF_BASE_MS     30000UL  // first backoff sleep: 30s
-#define BACKOFF_MAX_MS      300000UL // cap at 5 min
+// A gateway outage of days must not cost the nodes their battery.
+#define BACKOFF_MAX_MS      TX_INTERVAL
 #define MAX_BACKOFF_STEP    8        // prevents bit-shift overflow (30000 << 8 still fits uint32_t)
+#define RADIO_FAIL_SLEEP_MS 300000UL // radio init failure: sleep 5 min, then retry from reset
 
-#define DEPLOY_PING_INTERVAL_MS  8000UL  // ping rate in deploy mode
+#define DEPLOY_PING_INTERVAL_MS  8000UL   // ping rate in deploy mode
+#define DEPLOY_TIMEOUT_MS        600000UL // deploy mode never sleeps: force an exit after 10 min
 
 /* =========================================================
    Battery to ADC VALUES

@@ -7,8 +7,10 @@ from scalar_fastapi import get_scalar_api_reference
 import psycopg2
 import psycopg2.extras
 import os
+import secrets
 import time
 import re
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, List
 
@@ -67,7 +69,7 @@ _api_key_header = APIKeyHeader(
 )
 
 def require_auth(api_key: Optional[str] = Security(_api_key_header)):
-    if api_key != API_PASSWORD:
+    if api_key is None or not secrets.compare_digest(api_key, API_PASSWORD):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
 
 # -------------------------
@@ -80,8 +82,8 @@ class Reading(BaseModel):
     temperature: Optional[float] = Field(None, description="Air temperature (°C).")
     humidity: Optional[float] = Field(None, description="Relative humidity (%).")
     pressure: Optional[float] = Field(None, description="Atmospheric pressure (hPa).")
-    battery: Optional[int] = Field(None, description="Sensor battery (mV).")
-    camera_battery: Optional[int] = Field(None, description="Camera battery (mV), if equipped.")
+    battery: Optional[int] = Field(None, description="Sensor battery charge (%).")
+    camera_battery: Optional[int] = Field(None, description="Camera battery charge (%), if equipped.")
     counter: int = Field(..., description="Monotonic packet counter from the sensor.")
     rssi: int = Field(..., description="Received signal strength at the gateway (dBm).")
     timestamp: int = Field(..., description="Unix epoch seconds when the gateway received the reading.")
@@ -114,6 +116,16 @@ def get_db_conn():
         password=_DB_PASSWORD,
     )
 
+@contextmanager
+def db_cursor(dict_rows: bool = False):
+    conn = get_db_conn()
+    try:
+        factory = psycopg2.extras.RealDictCursor if dict_rows else None
+        yield conn.cursor(cursor_factory=factory)
+        conn.commit()
+    finally:
+        conn.close()
+
 def init_db():
     for attempt in range(10):
         try:
@@ -142,33 +154,38 @@ def init_db():
         ALTER TABLE readings
         ADD COLUMN IF NOT EXISTS camera_battery INTEGER
     """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS readings_sensor_ts
+        ON readings (sensor_id, timestamp DESC)
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS readings_ts
+        ON readings (timestamp DESC)
+    """)
     conn.commit()
     conn.close()
 
 init_db()
 
 def insert_reading(data: IngestPayload):
-    conn = get_db_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO readings (
-            sensor_id, temperature, humidity, pressure,
-            battery, camera_battery, counter, rssi, timestamp
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        data.sensor_id,
-        data.temperature,
-        data.humidity,
-        data.pressure,
-        data.battery,
-        data.camera_battery,
-        data.counter,
-        data.rssi,
-        int(time.time()),
-    ))
-    conn.commit()
-    conn.close()
+    with db_cursor() as cur:
+        cur.execute("""
+            INSERT INTO readings (
+                sensor_id, temperature, humidity, pressure,
+                battery, camera_battery, counter, rssi, timestamp
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data.sensor_id,
+            data.temperature,
+            data.humidity,
+            data.pressure,
+            data.battery,
+            data.camera_battery,
+            data.counter,
+            data.rssi,
+            int(time.time()),
+        ))
 
 # -------------------------
 # Endpoints
@@ -195,11 +212,9 @@ async def receive_sensor(payload: IngestPayload):
     dependencies=[Depends(require_auth)],
 )
 async def get_sensors():
-    conn = get_db_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT DISTINCT sensor_id FROM readings ORDER BY sensor_id")
-    rows = cur.fetchall()
-    conn.close()
+    with db_cursor() as cur:
+        cur.execute("SELECT DISTINCT sensor_id FROM readings ORDER BY sensor_id")
+        rows = cur.fetchall()
     return SensorsList(sensors=[row[0] for row in rows])
 
 @app.get(
@@ -211,24 +226,22 @@ async def get_sensors():
     dependencies=[Depends(require_auth)],
 )
 async def get_latest_readings():
-    conn = get_db_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT DISTINCT ON (sensor_id)
-            id, sensor_id, temperature, humidity, pressure,
-            battery, camera_battery, counter, rssi, timestamp
-        FROM readings
-        ORDER BY sensor_id, timestamp DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+    with db_cursor(dict_rows=True) as cur:
+        cur.execute("""
+            SELECT DISTINCT ON (sensor_id)
+                id, sensor_id, temperature, humidity, pressure,
+                battery, camera_battery, counter, rssi, timestamp
+            FROM readings
+            ORDER BY sensor_id, timestamp DESC
+        """)
+        rows = cur.fetchall()
     return [dict(row) for row in rows]
 
 @app.get(
     "/readings",
     tags=["Readings"],
     summary="Historical readings",
-    description="Returns readings ordered oldest → newest. Filter by sensor and/or time window.",
+    description="Returns readings ordered oldest → newest. Filter by sensor and/or time window. When more rows match than `limit`, the newest ones are kept.",
     response_model=List[Reading],
     dependencies=[Depends(require_auth)],
 )
@@ -236,7 +249,7 @@ async def get_readings(
     sensor_id: Optional[str] = Query(None, description="Restrict to one sensor."),
     from_ts: Optional[int]   = Query(None, description="Inclusive lower bound on `timestamp` (epoch seconds)."),
     to_ts:   Optional[int]   = Query(None, description="Inclusive upper bound on `timestamp` (epoch seconds)."),
-    limit:   int             = Query(500, ge=1, le=2000, description="Max rows to return (hard cap 2000)."),
+    limit:   int             = Query(500, ge=1, le=2000, description="Max rows to return, newest first (hard cap 2000)."),
 ):
     conditions = []
     params: list = []
@@ -253,18 +266,20 @@ async def get_readings(
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     params.append(limit)
 
-    conn = get_db_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(f"""
-        SELECT id, sensor_id, temperature, humidity, pressure,
-               battery, camera_battery, counter, rssi, timestamp
-        FROM readings
-        {where}
-        ORDER BY timestamp ASC
-        LIMIT %s
-    """, params)
-    rows = cur.fetchall()
-    conn.close()
+    # Truncate at the old end, not the new one: a capped query must still show recent data.
+    with db_cursor(dict_rows=True) as cur:
+        cur.execute(f"""
+            SELECT * FROM (
+                SELECT id, sensor_id, temperature, humidity, pressure,
+                       battery, camera_battery, counter, rssi, timestamp
+                FROM readings
+                {where}
+                ORDER BY timestamp DESC
+                LIMIT %s
+            ) newest
+            ORDER BY timestamp ASC
+        """, params)
+        rows = cur.fetchall()
     return [dict(row) for row in rows]
 
 # -------------------------

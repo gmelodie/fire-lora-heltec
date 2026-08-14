@@ -177,6 +177,15 @@ The API publishes an **OpenAPI 3.1** spec, with two built-in UIs:
 
 ## Utilities
 
+### Firmware unit tests
+
+The pure helpers in `sensor/sensor_math.h` (gateway-lost backoff, battery OCV curve) run on the
+host, with no board attached:
+
+```bash
+./tests/run.sh
+```
+
 ### Plot sensor data
 
 `scripts/plot.py` queries the API and produces time-series charts for any sensor/metric combination.

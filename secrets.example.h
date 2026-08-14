@@ -17,5 +17,8 @@
 #define API_PASSWORD "your_api_password"
 #define API_URL "https://192.168.x.x:8443"
 
+// Unset API_ROOT_CA means the gateway sends API_PASSWORD over an unverified TLS session.
+#define API_ROOT_CA_EXAMPLE "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+
 // ── Database ───────────────────────────────────────────────────────────────
 #define DB_PASSWORD "sensor_db_password"

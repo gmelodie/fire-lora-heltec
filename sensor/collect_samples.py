@@ -25,6 +25,8 @@ with serial.Serial(PORT, 115200, timeout=5) as ser:
             continue
         line = raw.decode("utf-8", errors="ignore").strip()
         print(line)
+        if line.startswith("AWAKE_S:"):
+            sys.exit("Node prints AWAKE_S: it runs an old build. Reflash before you measure.")
         if line.startswith("AWAKE_MS:"):
             ms = int(line.split(":")[1])
             samples.append(ms)
