@@ -9,7 +9,7 @@ Using LoRa Heltec V3 boards to detect wildfires in the Brazilian Cerrado.
 ```
 [Sensor nodes]  --LoRa-->  [Heltec V3 gateway]  --HTTPS POST-->  [FastAPI + PostgreSQL]
                                                                           |
-                                                               http://host:8000  (dashboard)
+                                                     https://cerrado.gmelodie.com  (public site)
 ```
 
 The gateway board posts sensor readings directly to the API over HTTPS — no intermediate Pi needed.
@@ -118,7 +118,8 @@ Ensure `secrets.h` exists at the repo root (see Firmware Setup step 3), then:
 ./start.sh
 ```
 
-The dashboard is available at `http://localhost:8000` (or replace `localhost` with the server's IP).
+The public site is available at `http://localhost:8000` and the dashboard at
+`http://localhost:8000/dashboard` (or replace `localhost` with the server's IP).
 
 ### Stop
 
@@ -144,22 +145,26 @@ docker compose logs -f
 docker compose logs -f api
 ```
 
-## Dashboard
+## Web pages
 
-Navigate to `http://<host>:8000` and enter the API password.
+| URL | Access | Content |
+|---|---|---|
+| `/` | public | Site map over satellite imagery: live node state, plus a time scrubber that replays each field campaign |
+| `/dashboard` | API password | Live card per sensor and time-series charts of every metric, refreshed every 30 s |
 
-| Section | Description |
-|---|---|
-| Current State | Live card per sensor — temperature, humidity, pressure, battery, RSSI, last seen. Refreshes every 30 s. |
-| History | Select sensor, metric, and a time range to plot a time-series chart. |
+The public page reads `static/deployments.json`, which holds the node positions, the campaign
+windows and the per-field validity flags. Update that file when a node moves or a new sensor id
+appears.
 
 ## API Endpoints
 
-All endpoints require the `X-API-Password` header.
+Every read endpoint is public. `POST /sensor` and `GET /auth/check` require the
+`X-API-Password` header.
 
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/sensor` | Ingest a sensor reading |
+| `GET` | `/auth/check` | Validate the API password (used by the dashboard login) |
 | `GET` | `/sensors` | List distinct sensor IDs |
 | `GET` | `/readings/latest` | Latest reading per sensor |
 | `GET` | `/readings` | Historical readings — supports `sensor_id`, `from_ts`, `to_ts`, `limit` query params |
@@ -230,9 +235,63 @@ python3 sensor/collect_samples.py [port] [output_file]
 
 It collects 30 samples and prints the average awake time in milliseconds.
 
-## TLS Certificate
+## Public HTTPS (Let's Encrypt)
 
-The API serves HTTPS directly via uvicorn. Generate a self-signed cert on the server:
+The public server answers on port 443 with a certificate from Let's Encrypt. uvicorn terminates
+TLS itself, so there is no reverse proxy. Port 8443 keeps its own listener on the same
+certificate, which lets the gateway boards keep their current `API_URL` with no re-flash.
+
+A `certbot` container issues the certificate and renews it twice a day, sharing the
+`letsencrypt` volume with the API container. It holds port 80 for the ACME challenge, so nothing
+else on the host may listen there.
+
+### 1. Point DNS at the server
+
+Create an `A` record for `cerrado.gmelodie.com`, then open both ports:
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+```
+
+### 2. Switch compose to the production overlay
+
+```bash
+cp .env.example .env      # then set LETSENCRYPT_EMAIL
+./restart.sh
+```
+
+`.env` sets `COMPOSE_FILE` to `docker-compose.yml:docker-compose.prod.yml`, plus `DOMAIN` and
+`LETSENCRYPT_EMAIL`. Every `docker compose` command in this README then picks the overlay up on
+its own, including `./start.sh` and `./restart.sh`. A machine without `.env` keeps the
+self-signed certificate on 8443, which is what a laptop wants.
+
+The overlay adds the certbot container, publishes port 443, and points uvicorn at
+`/etc/letsencrypt/live/$DOMAIN/`. The database volume is untouched: only the API container is
+recreated.
+
+### 3. Watch the first issuance
+
+```bash
+docker compose logs -f certbot
+curl https://cerrado.gmelodie.com/readings/latest
+```
+
+The API starts before the certificate exists. It waits up to five minutes for the file, and
+serves the self-signed pair if certbot is still failing, so the site stays reachable on 8443
+while you fix DNS. When certbot writes or renews the certificate, `api/entrypoint.sh` notices the
+change within an hour and exits, and the restart policy brings uvicorn back on the new file.
+
+Renewal failures repeat every 10 minutes rather than in a tight loop, because Let's Encrypt
+counts failures per hour. Check with:
+
+```bash
+docker compose exec certbot certbot certificates
+```
+
+## Self-signed certificate (LAN only)
+
+On a server with no domain name, uvicorn falls back to a self-signed pair. Generate it:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
@@ -243,7 +302,7 @@ openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
 
 Then paste the contents of `cert.pem` into the `API_CERT` field in `secrets.h`. The gateway board uses it to verify the server's identity.
 
-`cert.pem` and `key.pem` must be present at the repo root when starting the server — they are mounted into the API container automatically. Both are gitignored (`*.pem`).
+`cert.pem` and `key.pem` must be present at the repo root when starting the server. They are mounted into the API container automatically, and both are gitignored (`*.pem`). Keep them even on the public server: the base compose file mounts them, and uvicorn ignores them once `SSL_CERTFILE` points at the Let's Encrypt copy.
 
 ## Orange Pi Gateway (legacy)
 

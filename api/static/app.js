@@ -137,8 +137,8 @@ async function refreshCurrentState() {
 // ---- Live graphs ----
 
 const CHART_COLORS = [
-  '#f97316', '#3b82f6', '#22c55e', '#a855f7',
-  '#eab308', '#ec4899', '#14b8a6', '#f43f5e',
+  '#c65420', '#2a72c2', '#3e8a2e', '#96448a',
+  '#b5820a', '#0f9487',
 ];
 
 const METRICS = [
@@ -224,14 +224,14 @@ function renderAllCharts(rows) {
         plugins: {
           legend: {
             display: sensorIds.length > 1,
-            labels: { color: '#e6edf3', boxWidth: 10, font: { size: 10 } },
+            labels: { color: '#6f6753', boxWidth: 10, font: { size: 11 } },
           },
           tooltip: {
-            backgroundColor: '#161b22',
-            borderColor: '#30363d',
+            backgroundColor: '#ffffff',
+            borderColor: '#ddd3bd',
             borderWidth: 1,
-            titleColor: '#e6edf3',
-            bodyColor: '#8b949e',
+            titleColor: '#2d2a22',
+            bodyColor: '#6f6753',
             callbacks: { title: items => formatTick(items[0].parsed.x / 1000) },
           },
         },
@@ -239,17 +239,17 @@ function renderAllCharts(rows) {
           x: {
             type: 'linear',
             ticks: {
-              color: '#8b949e',
+              color: '#6f6753',
               maxTicksLimit: 6,
               maxRotation: 0,
-              font: { size: 10 },
+              font: { size: 11 },
               callback: val => formatTick(val / 1000),
             },
-            grid: { color: '#30363d' },
+            grid: { color: '#e7dfcc' },
           },
           y: {
-            ticks: { color: '#8b949e', font: { size: 10 } },
-            grid: { color: '#30363d' },
+            ticks: { color: '#6f6753', font: { size: 11 } },
+            grid: { color: '#e7dfcc' },
           },
         },
       },
@@ -353,7 +353,7 @@ async function handleLogin() {
   const remember = document.getElementById('remember-me').checked;
   Auth.setPassword(pw, remember);
   try {
-    await apiFetch('/readings/latest');
+    await apiFetch('/auth/check');
     document.getElementById('login-error').classList.add('hidden');
     hideLoginOverlay();
     await initDashboard();
@@ -373,6 +373,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('logout-btn').addEventListener('click', logout);
 
   if (!Auth.getPassword()) {
+    showLoginOverlay();
+    return;
+  }
+
+  // The read endpoints are public, so the stored password only counts once /auth/check accepts it.
+  try {
+    await apiFetch('/auth/check');
+  } catch (_) {
     showLoginOverlay();
     return;
   }

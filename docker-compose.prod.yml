@@ -1,0 +1,27 @@
+services:
+  api:
+    ports:
+      - "443:8443"
+    environment:
+      SSL_CERTFILE: /etc/letsencrypt/live/${DOMAIN}/fullchain.pem
+      SSL_KEYFILE: /etc/letsencrypt/live/${DOMAIN}/privkey.pem
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+
+  certbot:
+    image: certbot/certbot:v3.1.0
+    ports:
+      - "80:80"
+    environment:
+      DOMAIN: ${DOMAIN}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_work:/var/lib/letsencrypt
+      - ./scripts/certbot-loop.sh:/certbot-loop.sh:ro
+    entrypoint: ["/bin/sh", "/certbot-loop.sh"]
+    restart: unless-stopped
+
+volumes:
+  letsencrypt:
+  certbot_work:

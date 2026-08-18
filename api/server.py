@@ -42,13 +42,15 @@ tags_metadata = [
     {"name": "Readings", "description": "Query stored sensor readings."},
     {"name": "Sensors",  "description": "Discover known sensor IDs."},
     {"name": "Ingest",   "description": "Gateway-only endpoint that stores new readings."},
+    {"name": "Auth",     "description": "Password check for the private dashboard."},
 ]
 
 app = FastAPI(
     title="Fire LoRa Sensor API",
     description=(
         "REST API for the Fire LoRa Heltec V3 wildfire-detection network.\n\n"
-        "All endpoints require the `X-API-Password` header. "
+        "Every read endpoint is public. `POST /sensor` and `GET /auth/check` "
+        "require the `X-API-Password` header. "
         "Interactive docs: [`/scalar`](/scalar) (Scalar) · [`/docs`](/docs) (Swagger UI) · "
         "[`/redoc`](/redoc) (ReDoc) · raw spec: [`/openapi.json`](/openapi.json) (OpenAPI 3.1)."
     ),
@@ -204,12 +206,22 @@ async def receive_sensor(payload: IngestPayload):
     return StatusOk()
 
 @app.get(
+    "/auth/check",
+    tags=["Auth"],
+    summary="Validate the API password",
+    description="Returns 200 when `X-API-Password` matches, 401 otherwise. The dashboard login uses it, since the read endpoints accept anyone.",
+    response_model=StatusOk,
+    dependencies=[Depends(require_auth)],
+)
+async def check_auth():
+    return StatusOk()
+
+@app.get(
     "/sensors",
     tags=["Sensors"],
     summary="List sensor IDs",
     description="Returns every distinct `sensor_id` that has ever reported a reading.",
     response_model=SensorsList,
-    dependencies=[Depends(require_auth)],
 )
 async def get_sensors():
     with db_cursor() as cur:
@@ -223,7 +235,6 @@ async def get_sensors():
     summary="Latest reading per sensor",
     description="One row per sensor, picking the most recent reading by `timestamp`.",
     response_model=List[Reading],
-    dependencies=[Depends(require_auth)],
 )
 async def get_latest_readings():
     with db_cursor(dict_rows=True) as cur:
@@ -243,7 +254,6 @@ async def get_latest_readings():
     summary="Historical readings",
     description="Returns readings ordered oldest → newest. Filter by sensor and/or time window. When more rows match than `limit`, the newest ones are kept.",
     response_model=List[Reading],
-    dependencies=[Depends(require_auth)],
 )
 async def get_readings(
     sensor_id: Optional[str] = Query(None, description="Restrict to one sensor."),
@@ -282,16 +292,16 @@ async def get_readings(
         rows = cur.fetchall()
     return [dict(row) for row in rows]
 
-# -------------------------
-# Dashboard (HTML — excluded from API docs)
-# -------------------------
-
 @app.get("/scalar", include_in_schema=False)
 async def scalar_html():
     return get_scalar_api_reference(openapi_url=app.openapi_url, title=app.title)
 
 @app.get("/", include_in_schema=False)
-async def dashboard():
+async def public_site():
     return FileResponse("static/index.html")
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard():
+    return FileResponse("static/dashboard.html")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

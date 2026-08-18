@@ -55,6 +55,8 @@ RUNS = [
          sf=11, tx_dbm=16, interval_min=60, enclosure="vented", site="field"),
 ]
 
+# api/static/deployments.json mirrors the field runs above for the public web map.
+
 # Calendar span of each campaign, including its bench and deploy-mode packets.
 CAMPAIGNS = [
     ("F1", "2026-04-26 00:00", "2026-04-30 23:59"),

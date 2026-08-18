@@ -3,85 +3,101 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fire Watch — Cerrado Sensor Dashboard</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <title>Fire LoRa — Cerrado UFSCar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/public.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <script src="/static/public.js" defer></script>
 </head>
 <body>
-
-  <div id="login-overlay">
-    <div class="login-box">
-      <span class="login-icon">&#9650;</span>
-      <h2>Fire Watch</h2>
-      <p>Enter API password to access the dashboard</p>
-      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
-      <label class="remember-row">
-        <input type="checkbox" id="remember-me" checked>
-        Keep me signed in on this device
-      </label>
-      <button id="login-btn">Login</button>
-      <p id="login-error" class="error hidden">Wrong password. Try again.</p>
-    </div>
-  </div>
 
   <header>
     <div class="header-title">
       <span class="header-icon">&#9650;</span>
-      Fire Watch &mdash; Cerrado Sensor Dashboard
+      Fire LoRa &mdash; Cerrado UFSCar
     </div>
-    <div class="header-meta">
-      <span id="refresh-badge"><span class="refresh-dot"></span>Refreshing in <span id="refresh-countdown">30</span>s</span>
-      <button id="logout-btn" class="logout-btn" title="Sign out">Logout</button>
-    </div>
+    <nav class="header-meta">
+      <a href="#live">Live network</a>
+      <a href="#replay">Replay</a>
+      <a href="/scalar">API</a>
+      <a href="/dashboard">Dashboard</a>
+    </nav>
   </header>
 
   <main>
-    <section class="section">
-      <h2 class="section-title">Current State</h2>
-      <div id="sensor-grid" class="sensor-grid">
-        <p class="placeholder">Loading sensors&hellip;</p>
+
+    <section class="intro">
+      <h1>A LoRa sensor network in the cerrado</h1>
+      <p>
+        Five battery-powered Heltec V3 nodes measured air temperature, humidity and pressure
+        in a cerrado fragment on the UFSCar campus in São Carlos, Brazil. Each node sends one
+        LoRa packet per hour to a gateway 70 to 150 m away, which stores it through this API.
+        The goal is to learn what a cheap, solar-free node survives in the field, and how close
+        its readings sit to the INMET A711 weather station next door.
+      </p>
+      <p>
+        Three field campaigns ran between April and July 2026. Every reading below comes from
+        the same public API that the gateway writes to. The code, the raw data and the analysis
+        live on <a href="https://github.com/gmelodie/fire-lora-heltec">GitHub</a>.
+      </p>
+    </section>
+
+    <section id="live" class="section">
+      <h2 class="section-title">Live network</h2>
+      <p class="section-lead">
+        The map holds every fixed point of the deployment. A node turns green when its last
+        packet is recent, ochre when it is a few hours old, and hollow grey when it stopped
+        reporting.
+      </p>
+      <div id="live-map" class="map"></div>
+      <p id="live-status" class="status-line">Loading the latest readings&hellip;</p>
+      <p id="live-unknown" class="status-line hidden"></p>
+    </section>
+
+    <section id="replay" class="section">
+      <h2 class="section-title">Replay the campaigns</h2>
+      <p class="section-lead">
+        Pick a campaign and drag the slider through its hours. Each marker shows the reading
+        nearest to the cursor, and fades out when the node has nothing to report.
+      </p>
+
+      <div id="campaign-picker" class="picker"></div>
+      <p id="campaign-summary" class="section-lead"></p>
+
+      <div id="replay-map" class="map"></div>
+
+      <div class="scrub-row">
+        <button id="play-btn" class="btn-quiet" aria-label="Play the campaign">&#9654; Play</button>
+        <input type="range" id="scrubber" min="0" max="1" step="300" value="0">
+        <span id="cursor-time" class="cursor-time">&mdash;</span>
+      </div>
+
+      <div class="replay-foot">
+        <div class="legend">
+          <span class="legend-title">Air temperature</span>
+          <div class="legend-ramp"></div>
+          <div class="legend-ticks"><span>5 °C</span><span>25 °C</span><span>45 °C</span></div>
+          <p class="legend-note">A slate marker means the node reported, but its sensor was faulty.</p>
+        </div>
+        <div id="cursor-readout" class="readout"></div>
       </div>
     </section>
 
     <section class="section">
-      <h2 class="section-title">Live Graphs</h2>
-      <div class="chart-controls">
-        <div class="controls-row">
-          <div class="search-group">
-            <label for="sensor-select">Sensor</label>
-            <select id="sensor-select">
-              <option value="">All Sensors</option>
-            </select>
-          </div>
-          <div class="preset-group">
-            <label>Range</label>
-            <div class="preset-btns">
-              <button class="preset-btn" data-preset="1h">1h</button>
-              <button class="preset-btn" data-preset="6h">6h</button>
-              <button class="preset-btn active" data-preset="24h">24h</button>
-              <button class="preset-btn" data-preset="7d">7d</button>
-              <button class="preset-btn" data-preset="custom">Custom</button>
-            </div>
-          </div>
-        </div>
-        <div id="custom-range" class="controls-row hidden">
-          <div class="search-group">
-            <label for="from-dt">From</label>
-            <input type="datetime-local" id="from-dt">
-          </div>
-          <div class="search-group">
-            <label for="to-dt">To</label>
-            <input type="datetime-local" id="to-dt">
-          </div>
-          <button id="apply-custom-btn">Apply</button>
-        </div>
-      </div>
-      <div id="charts-grid" class="charts-grid">
-        <p class="placeholder" style="padding:1rem">Loading data&hellip;</p>
-      </div>
+      <h2 class="section-title">The campaigns</h2>
+      <table id="campaign-table" class="table"></table>
     </section>
+
   </main>
 
-  <script src="/static/app.js" defer></script>
+  <footer>
+    <p><span id="attribution"></span> · Times are shown in <span id="tz-label"></span>.</p>
+    <p>Code and data under the MIT licence · <a href="/dashboard">Private dashboard</a> · <a href="/scalar">API documentation</a></p>
+  </footer>
+
 </body>
 </html>

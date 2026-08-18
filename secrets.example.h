@@ -17,6 +17,8 @@
 #define API_PASSWORD "your_api_password"
 #define API_URL "https://192.168.x.x:8443"
 
+// The public server answers on both, so "https://cerrado.gmelodie.com" also works here.
+
 // Unset API_ROOT_CA means the gateway sends API_PASSWORD over an unverified TLS session.
 #define API_ROOT_CA_EXAMPLE "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
 

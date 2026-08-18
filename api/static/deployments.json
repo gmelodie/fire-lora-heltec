@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "timezone": { "label": "UTC−3 (São Carlos, no DST)", "utc_offset_hours": -3 },
+  "map": {
+    "tile_url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    "attribution": "Imagery: Esri, Maxar, Earthstar Geographics",
+    "max_zoom": 18
+  },
+  "gateway": { "lat": -21.979322, "lon": -47.883435 },
+  "station": { "name": "INMET A711", "lat": -21.98028, "lon": -47.88389 },
+  "positions": {
+    "A": { "lat": -21.9792439, "lon": -47.8843463, "distance_m": 94.4 },
+    "B": { "lat": -21.9793505, "lon": -47.8841408, "distance_m": 72.8 },
+    "C": { "lat": -21.9783096, "lon": -47.8844080, "distance_m": 150.8 },
+    "D": { "lat": -21.9790620, "lon": -47.8840620, "distance_m": 70.8 },
+    "E": { "lat": -21.9793889, "lon": -47.8841667, "distance_m": 75.8 }
+  },
+  "campaigns": [
+    {
+      "id": "F1",
+      "title": "F1 — first field pair",
+      "summary": "Two sealed nodes 73 m and 94 m from the gateway, SF7, one packet every 90 min. Both BME280 sensors failed, so F1 is a radio and battery run.",
+      "start_utc": 1777390440,
+      "end_utc": 1777568580,
+      "sf": 7,
+      "tx_dbm": 14,
+      "enclosure": "sealed",
+      "runs": [
+        {
+          "node": "N1",
+          "position": "B",
+          "sensor_ids": ["1"],
+          "start_utc": 1777390860,
+          "end_utc": 1777568580,
+          "interval_min": 90,
+          "valid": { "temperature": false, "humidity": false, "pressure": false },
+          "note": "BME280 answered on I2C but its calibration read failed, so every environmental field is unusable"
+        },
+        {
+          "node": "N2",
+          "position": "A",
+          "sensor_ids": ["15", "2"],
+          "start_utc": 1777390440,
+          "end_utc": 1777567980,
+          "interval_min": 90,
+          "valid": { "temperature": true, "humidity": false, "pressure": true },
+          "note": "humidity pinned at exactly 100 % by water in the enclosure"
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "title": "F2 — full environmental run",
+      "summary": "One sealed node at the far position, 151 m from the gateway, SF10, one packet every hour. All 113 readings are valid; the node died of water ingress on 24 May.",
+      "start_utc": 1779194760,
+      "end_utc": 1779591180,
+      "sf": 10,
+      "tx_dbm": 16,
+      "enclosure": "sealed",
+      "runs": [
+        {
+          "node": "N3",
+          "position": "C",
+          "sensor_ids": ["3"],
+          "start_utc": 1779194760,
+          "end_utc": 1779591180,
+          "interval_min": 60,
+          "valid": { "temperature": true, "humidity": true, "pressure": true },
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "F3",
+      "title": "F3 — dry-season run",
+      "summary": "Two vented nodes, SF11, one packet every hour. N5 ran 28 h before its battery emptied; N4 carried on for another 192 h with no environmental sensor attached.",
+      "start_utc": 1783538340,
+      "end_utc": 1784339040,
+      "sf": 11,
+      "tx_dbm": 16,
+      "enclosure": "vented",
+      "runs": [
+        {
+          "node": "N4",
+          "position": "D",
+          "sensor_ids": ["67", "70"],
+          "start_utc": 1783538340,
+          "end_utc": 1784339040,
+          "interval_min": 60,
+          "valid": { "temperature": false, "humidity": false, "pressure": false },
+          "note": "BME280 was never attached to the board, so the node sends radio and battery only"
+        },
+        {
+          "node": "N5",
+          "position": "E",
+          "sensor_ids": ["222", "224"],
+          "start_utc": 1783538820,
+          "end_utc": 1783640220,
+          "interval_min": 60,
+          "valid": { "temperature": true, "humidity": true, "pressure": true },
+          "note": "battery reached 0 % after 28 h"
+        }
+      ]
+    }
+  ]
+}

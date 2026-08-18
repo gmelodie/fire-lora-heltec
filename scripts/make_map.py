@@ -45,6 +45,8 @@ TILE_URL, ZOOM, ATTRIBUTION = SOURCES[SOURCE]
 GATEWAY = (-21.979322, -47.883435)
 STATION = (-21.98028, -47.88389)
 
+# The public web map reads the same coordinates from api/static/deployments.json.
+
 # position -> lat, lon, campaign, node, mean RSSI (dBm)
 SITES = [
     ("A", -21.9792439, -47.8843463, "F1", "N2", -104.6),
